@@ -1,0 +1,24 @@
+name: Security
+
+on:
+  push:
+    branches: ["**"]
+
+jobs:
+  safe-chain:
+    name: Aikido safe-chain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "latest"
+          cache: "pnpm"
+      - name: Install safe-chain
+        run: curl -fsSL https://github.com/AikidoSec/safe-chain/releases/latest/download/install-safe-chain.sh | sh -s -- --ci
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile

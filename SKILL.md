@@ -1,0 +1,472 @@
+---
+name: creating-npm-packages
+description: "Scaffold new TypeScript npm packages with ESM + CJS dual output, pnpm installs, Vite+ (vp) linting/formatting, Bun testing, tsdown bundling, semantic-release publishing, and GitHub Actions CI. Use when asked to create, scaffold, or set up a new npm package."
+---
+
+# Creating npm Packages
+
+Scaffold production-ready TypeScript npm packages with a consistent stack:
+**pnpm** (package manager), **Bun** (test runner), **tsdown** (bundler),
+**Vite+ / `vp`** (lint/format/typecheck + git hooks), **semantic-release**
+(publishing), **GitHub Actions** (CI).
+
+## Workflow
+
+1. Create the project directory and initialise git
+2. Generate all config files using the templates below
+3. Replace placeholder values (`PACKAGE_NAME`, `PACKAGE_DESCRIPTION`, `GITHUB_OWNER`, `GITHUB_REPO`, `CURRENT_YEAR`) with user-provided values
+4. Write initial source code in `src/index.ts` and a starter test in `src/index.test.ts`
+5. Run `pnpm install` (the `prepare` script runs `vp config`, which installs the pre-commit hook)
+6. Run `pnpm run build` to verify the setup works
+7. Run `pnpm run test` to verify tests pass
+8. Run `pnpm run check` to verify lint/format/typecheck passes
+
+## Project Structure
+
+```text
+.
+├── .github/
+│   └── workflows/
+│       ├── build-test.yml
+│       ├── release.yml
+│       └── security.yml
+├── src/
+│   ├── index.ts
+│   └── index.test.ts
+├── .gitignore
+├── CHANGELOG.md
+├── LICENSE
+├── package.json
+├── README.md
+├── release.config.mjs
+├── tsconfig.json
+└── vite.config.ts
+```
+
+`vp config` also generates a `.vite-hooks/` directory (pre-commit hook running
+`vp staged`) and sets `core.hooksPath` — the generated `_/` shim dir ignores
+itself; commit `.vite-hooks/pre-commit`.
+
+## File Templates
+
+### package.json
+
+```json
+{
+  "name": "PACKAGE_NAME",
+  "version": "0.0.0",
+  "description": "PACKAGE_DESCRIPTION",
+  "license": "ISC",
+  "type": "module",
+  "files": ["dist"],
+  "author": {
+    "name": "Zander Martineau",
+    "email": "zander@zander.wtf",
+    "url": "https://zander.wtf"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GITHUB_OWNER/GITHUB_REPO.git"
+  },
+  "homepage": "https://github.com/GITHUB_OWNER/GITHUB_REPO",
+  "bugs": {
+    "url": "https://github.com/GITHUB_OWNER/GITHUB_REPO/issues"
+  },
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "packageManager": "pnpm@11.10.0",
+  "scripts": {
+    "build": "tsdown src/index.ts --format cjs,esm --target es2020 --dts --sourcemap --clean",
+    "check": "vp check --fix",
+    "dev": "tsdown src/index.ts --format cjs,esm --target es2020 --dts --sourcemap --watch",
+    "prepare": "vp config",
+    "release": "semantic-release",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^11.0.0",
+    "@types/bun": "^1.3.10",
+    "@types/node": "^25.4.0",
+    "semantic-release": "^25.0.3",
+    "tsdown": "^0.21.2",
+    "typescript": "^5.9.3",
+    "vite-plus": "^0.2.2"
+  }
+}
+```
+
+Key conventions:
+
+- Always set `"type": "module"` for ESM-first
+- `exports` map with per-condition `types`: tsdown emits `index.mjs` /
+  `index.cjs` with matching `index.d.mts` / `index.d.cts` — never point at
+  `index.js` / `index.d.ts`, those files don't exist
+- `"files": ["dist"]` to publish only built output
+- `"publishConfig": { "access": "public" }` for scoped packages
+- Use `tsdown` (not tsup) for bundling
+
+### vite.config.ts
+
+Vite+ tooling config: pre-commit staged checks, formatter, and type-aware
+linting.
+
+```ts
+import { defineConfig } from "vite-plus";
+
+export default defineConfig({
+  staged: {
+    "*": "vp check --fix",
+  },
+  fmt: {},
+  lint: {
+    jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
+    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+    options: { typeAware: true, typeCheck: true },
+  },
+});
+```
+
+### release.config.mjs
+
+```js
+export default {
+  branches: ["main"],
+  plugins: [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    "@semantic-release/changelog",
+    "@semantic-release/npm",
+    [
+      "@semantic-release/git",
+      {
+        assets: ["package.json", "CHANGELOG.md"],
+        message: "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}",
+      },
+    ],
+    [
+      "@semantic-release/github",
+      {
+        failComment: false,
+        failTitle: false,
+      },
+    ],
+  ],
+};
+```
+
+Create a `CHANGELOG.md` stub (`# Changelog` heading + one line saying notes are
+generated by semantic-release); releases prepend notes to it.
+
+### tsconfig.json
+
+```json
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "target": "es2022",
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+    "types": ["bun"],
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "module": "NodeNext",
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true,
+    "declaration": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"]
+}
+```
+
+`"types": ["bun"]` makes `bun:test` imports resolve for the type-aware `vp
+check`.
+
+### .github/workflows/build-test.yml
+
+```yaml
+name: Build and Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: "pnpm"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Run Tests
+        run: pnpm run test
+```
+
+### .github/workflows/release.yml
+
+```yaml
+name: NPM Release
+
+on:
+  workflow_dispatch:
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    name: Release to NPM
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # semantic-release needs full history
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm exec semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+### .github/workflows/security.yml
+
+```yaml
+name: Security
+
+on:
+  push:
+    branches: ["**"]
+
+jobs:
+  safe-chain:
+    name: Aikido safe-chain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "latest"
+          cache: "pnpm"
+      - name: Install safe-chain
+        run: curl -fsSL https://github.com/AikidoSec/safe-chain/releases/latest/download/install-safe-chain.sh | sh -s -- --ci
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+```
+
+### .gitignore
+
+```
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Build output and caches
+dist/
+build/
+coverage/
+.cache/
+.turbo/
+.vite/
+*.tsbuildinfo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+```
+
+### LICENSE (ISC)
+
+```
+ISC License
+
+Copyright (c) CURRENT_YEAR Zander Martineau
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+```
+
+### src/index.ts (starter)
+
+Write the actual package implementation here. If no specific functionality is requested, use this minimal starter:
+
+```ts
+export interface HelloOptions {
+  punctuation?: string;
+}
+
+export function hello(name = "world", { punctuation = "!" }: HelloOptions = {}): string {
+  return `Hello, ${name}${punctuation}`;
+}
+```
+
+### src/index.test.ts (starter)
+
+```ts
+import { describe, expect, test } from "bun:test";
+
+import { hello } from "./index.js";
+
+describe("hello", () => {
+  test("returns a greeting with the provided name", () => {
+    expect(hello("Bun")).toBe("Hello, Bun!");
+  });
+});
+```
+
+## Conventions
+
+- **Package manager**: pnpm for installing and running scripts
+- **Bundler**: tsdown (ESM + CJS dual output: `.mjs` / `.cjs` with `.d.mts` / `.d.cts` types)
+- **Linting/formatting/typechecking**: Vite+ `vp check --fix` (not ESLint/Prettier/Biome), configured in `vite.config.ts`
+- **Git hooks**: `vp config` (via the `prepare` script) installs a pre-commit hook running `vp staged`
+- **Testing**: `bun:test` (not Jest or Vitest)
+- **Releasing**: semantic-release with conventional commits, changelog written to `CHANGELOG.md`
+- **Target**: ES2020 for broad compatibility, Node.js ≥ 20.19.0
+- **Strict TypeScript**: `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`
+- **Imports**: Always use `.js` extension in relative imports (required by `verbatimModuleSyntax` + NodeNext)
+
+## Release Conventions
+
+Releases run from the manually-triggered `NPM Release` workflow (Actions → Run
+workflow). Version bumps are determined by conventional commit messages:
+
+- `fix:` → patch release
+- `feat:` → minor release
+- `feat!:` or `BREAKING CHANGE:` in footer → major release
+
+The release job requires two repository secrets:
+
+- `NPM_TOKEN` — npm publish token
+- `GITHUB_TOKEN` — automatically provided by GitHub Actions
+
+semantic-release commits the version bump and `CHANGELOG.md` back to `main`
+with `[skip ci]` — never hand-edit `version` in `package.json`.
+
+## Multiple Entrypoints
+
+If the package needs multiple entrypoints, update both the build command and the `exports` map:
+
+```json
+{
+  "exports": {
+    ".": {
+      "import": { "types": "./dist/index.d.mts", "default": "./dist/index.mjs" },
+      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+    },
+    "./utils": {
+      "import": { "types": "./dist/utils.d.mts", "default": "./dist/utils.mjs" },
+      "require": { "types": "./dist/utils.d.cts", "default": "./dist/utils.cjs" }
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts src/utils.ts --format cjs,esm --target es2020 --dts --sourcemap --clean"
+  }
+}
+```
+
+## Adding Runtime Dependencies
+
+When the package needs runtime dependencies, add them to `dependencies` (not `devDependencies`). Only devDependencies should include build tools, types, and test utilities.
+
+## README Template
+
+Generate a README with:
+
+1. Package name as heading
+2. One-line description
+3. Install instructions (`pnpm add PACKAGE_NAME` / `npm install PACKAGE_NAME`)
+4. Usage example with import
+5. API documentation for exported functions/types
+6. License footer

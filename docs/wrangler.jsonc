@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "zed-package-starter-docs",
+  "compatibility_date": "2026-07-08",
+  "compatibility_flags": ["nodejs_compat"],
+  // Static Astro build output served as assets from a Worker. The
+  // @astrojs/cloudflare adapter emits static files into dist/client. For SSR
+  // (output: 'server'), add "main" pointing at the adapter's Worker entry.
+  "assets": {
+    "directory": "./dist/client",
+    "not_found_handling": "404-page",
+  },
+  "observability": { "enabled": true },
+}

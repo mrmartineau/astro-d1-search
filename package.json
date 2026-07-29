@@ -1,0 +1,67 @@
+{
+  "name": "@mrmartineau/npm-package-base",
+  "version": "0.0.0",
+  "description": "Starter template for modern TypeScript npm packages.",
+  "homepage": "https://github.com/mrmartineau/zed-package-starter",
+  "bugs": {
+    "url": "https://github.com/mrmartineau/zed-package-starter/issues"
+  },
+  "license": "ISC",
+  "author": {
+    "name": "Zander Martineau",
+    "email": "zander@zander.wtf",
+    "url": "https://zander.wtf"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mrmartineau/zed-package-starter.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format cjs,esm --target es2020 --dts --sourcemap --clean",
+    "check": "vp check --fix",
+    "dev": "tsdown src/index.ts --format cjs,esm --target es2020 --dts --sourcemap --watch",
+    "docs:build": "pnpm --filter docs build",
+    "docs:dev": "pnpm --filter docs dev",
+    "docs:deploy": "pnpm --filter docs deploy",
+    "prepare": "vp config",
+    "release": "semantic-release",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^11.0.0",
+    "@types/bun": "^1.3.10",
+    "@types/node": "^25.4.0",
+    "semantic-release": "^25.0.3",
+    "tsdown": "^0.21.2",
+    "typescript": "^5.9.3",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "packageManager": "pnpm@11.10.0"
+}
