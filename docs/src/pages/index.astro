@@ -9,9 +9,37 @@ import { site } from "../site.config";
     <h1 class="hero-title">{site.title}</h1>
     <p class="hero-subtitle">{site.description}</p>
     <div class="hero-actions">
-      <a href="/guides" class="zui-button">Get started</a>
-      <a href="/components" class="zui-button zui-button-variant-outline">Browse components</a>
+      <a href="/guides/getting-started" class="zui-button">Get started</a>
+      <a href="/reference/configuration" class="zui-button zui-button-variant-outline">Reference</a>
     </div>
+  </section>
+
+  <section class="landing-section flow">
+    <h2>What you get</h2>
+    <ul>
+      <li>
+        <strong>Build-time indexing</strong> of any markdown or MDX — content collections,
+        standalone pages, anything on disk — into a D1 full-text index.
+      </li>
+      <li>
+        <strong>An injected API endpoint</strong> (<code>GET /api/search</code>) with bm25 +
+        recency ranking, highlighted snippets, type filtering, input validation and edge caching.
+      </li>
+      <li>
+        <strong>A query function</strong> (<code>searchIndex</code>) for server-rendered search
+        pages that hit the D1 binding directly, with no HTTP round trip.
+      </li>
+      <li>
+        <strong>Content-type agnostic</strong>: types are strings you choose, so one index can
+        serve site-wide search, per-section search, and even several sites at once.
+      </li>
+    </ul>
+    <p>
+      Requires the <a href="https://docs.astro.build/en/guides/integrations-guide/cloudflare/"
+        ><code>@astrojs/cloudflare</code></a
+      > adapter. The rest of your site stays fully static — only the search endpoint runs
+      server-side.
+    </p>
   </section>
 
   <section class="landing-section flow">
@@ -20,8 +48,8 @@ import { site } from "../site.config";
   </section>
 
   <section class="landing-section flow">
-    <h2>Components</h2>
-    <SectionCards section="components" />
+    <h2>Reference</h2>
+    <SectionCards section="reference" />
   </section>
 </Layout>
 

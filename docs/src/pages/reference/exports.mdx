@@ -1,0 +1,174 @@
+---
+layout: ../../layouts/Layout.astro
+title: Exports
+order: 4
+description: The three entry points, every exported function and type, and which one to import where.
+---
+
+The package has three entry points. Which one you import from matters: the root and `/indexer`
+entries pull in Node built-ins, so only `/core` is safe inside a Worker or client bundle.
+
+| Entry                     | Import in                        | Contains                                        |
+| ------------------------- | -------------------------------- | ----------------------------------------------- |
+| `astro-d1-search`         | `astro.config.mjs`, Node scripts | The integration, plus a re-export of everything |
+| `astro-d1-search/core`    | Pages, Workers, anything runtime | Query logic only. No Node built-ins             |
+| `astro-d1-search/indexer` | Build scripts                    | Filesystem walking, SQL generation, the CLI     |
+
+## `astro-d1-search`
+
+### `default` — `d1Search(options)`
+
+The Astro integration.
+
+```js
+import d1Search from "astro-d1-search";
+
+integrations: [d1Search(searchConfig)];
+```
+
+Injects the API route, registers the Vite plugin that serves
+`virtual:astro-d1-search-config` to it, and validates your wrangler config at startup.
+
+### `resolveConfig(options)`
+
+Fills in every default and derives `types` from your sources; throws on invalid input. Pass the
+result to `searchIndex()` so pages rank like the endpoint does.
+
+Also available from `astro-d1-search/core` — import it from there in anything that ships to the
+Worker, so you don't drag the indexer along with it.
+
+```ts
+const config = resolveConfig(searchConfig);
+// { database, binding, site, sources, types, apiRoute, cors, cacheMaxAge,
+//   maxLimit, maxOffset, maxQueryLength, weights, recency, maxTerms,
+//   snippetTokens, maxContentLength }
+```
+
+The root entry also re-exports everything from `/core` and `/indexer`, which is convenient in build
+scripts and in `.astro` frontmatter that already runs on the server.
+
+## `astro-d1-search/core`
+
+Zero Node dependencies — safe in a Worker, and it won't drag the indexer into your bundle. This is
+the entry point for anything that runs at request time: search pages, shared utils, Worker code.
+
+### `searchIndex(db, options, ranking?)`
+
+```ts
+function searchIndex(
+  db: D1Like,
+  options: { query: string; limit?: number; offset?: number; type?: string },
+  ranking?: RankingConfig,
+): Promise<SearchResult[]>;
+```
+
+Runs the query and returns ranked results. `ranking` defaults to `DEFAULT_RANKING`; pass a resolved
+config to use your own weights.
+
+```ts
+const results = await searchIndex(
+  Astro.locals.runtime.env.SEARCH_DB,
+  { query: "css grid", limit: 25, type: "note" },
+  config,
+);
+```
+
+### `toFtsQuery(input, maxTerms?)`
+
+Converts raw user input into a safe FTS5 `MATCH` expression. Exported mainly so you can test or
+preview what a query becomes.
+
+```ts
+toFtsQuery("cats OR dogs"); // '"cats" "OR" "dogs"*'
+```
+
+### `resolveConfig(options)`
+
+The same function as the root export, re-exported here so runtime code can build its ranking config
+without importing the indexer. `config.ts` has no Node dependencies, which is what makes this safe.
+
+### `DEFAULT_RANKING`
+
+The built-in weights, recency settings, `maxTerms` and `snippetTokens`. Useful as a base when you
+want to override one field:
+
+```ts
+searchIndex(db, options, { ...DEFAULT_RANKING, recency: { boost: 0, windowDays: 1095 } });
+```
+
+### Types
+
+- **`D1Like`** — a minimal structural type for a D1 binding. Cloudflare's `D1Database` satisfies
+  it, which is how the package avoids depending on `@cloudflare/workers-types` (whose `Cache` type
+  conflicts with the DOM lib's).
+- **`SearchResult`** — `{ title, url, type, date, tags, emoji, snippet, score }`.
+- **`SearchOptions`** — `{ query, limit?, offset?, type? }`.
+- **`RankingConfig`** — the ranking subset of the resolved config.
+
+## `astro-d1-search/indexer`
+
+Node-only: reads the filesystem and shells out to `wrangler`.
+
+### `runCli(options, argv?)`
+
+The CLI entry point. Reads `--target=remote` and `--dry-run` from `process.argv`.
+
+```ts
+// scripts/build-search-index.ts
+import { runCli } from "astro-d1-search/indexer";
+import searchConfig from "../search.config";
+
+runCli(searchConfig);
+```
+
+### `buildIndex(options, { target?, dryRun?, outFile? })`
+
+Gathers documents, writes the SQL file, and pushes it with `wrangler d1 execute` unless `dryRun` is
+set. Returns `{ count, counts }` — the total and a per-type breakdown.
+
+```ts
+const { count, counts } = await buildIndex(searchConfig, { target: "remote" });
+// { count: 214, counts: { blog: 61, note: 148, page: 5 } }
+```
+
+Defaults: `target: 'local'`, `dryRun: false`, `outFile: 'search-index.sql'`.
+
+### `gatherDocs(options)`
+
+Parses the sources and returns the documents that would be indexed, without writing anything.
+Untitled documents are already filtered out. Handy for a "what's actually in my index?" check.
+
+### `toSql(docs, site)`
+
+Turns documents into the full SQL script: schema, delete (site-scoped if `site` is non-empty), then
+batched `INSERT`s sized to stay under SQLite's statement limit.
+
+### `SCHEMA_SQL`
+
+The `CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(...)` statement. Fork it if you need
+a different tokenizer.
+
+### `markdownToPlainText(markdown)` and `sqlEscape(value)`
+
+The markdown flattener and the single-quote escaper, exported for testing and for anyone building a
+custom indexing pipeline.
+
+## The table
+
+```sql
+CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+  title,
+  description,
+  content,
+  tags,
+  url UNINDEXED,
+  site UNINDEXED,
+  type UNINDEXED,
+  date UNINDEXED,
+  emoji UNINDEXED,
+  tokenize = 'porter unicode61'
+);
+```
+
+The first four columns are searchable, in that order — which is the order the bm25 weights are
+applied in. The `UNINDEXED` columns are stored and returned but never matched against.

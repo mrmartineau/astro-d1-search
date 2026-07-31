@@ -5,10 +5,11 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable"],
     "allowJs": true,
     "resolveJsonModule": true,
     "moduleDetection": "force",
-    "types": ["bun"],
+    "types": ["bun", "node"],
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
 
@@ -17,14 +18,11 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
 
-    /* If transpiling with TypeScript: */
-    "module": "NodeNext",
-    "outDir": "dist",
-    "rootDir": "src",
-    "sourceMap": true,
-
-    /* AND if you're building for a library: */
-    "declaration": true
+    /* tsdown does the emitting, so TypeScript only type-checks here.
+       Bundler resolution keeps the extensionless relative imports valid. */
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "tsdown.config.ts"]
 }

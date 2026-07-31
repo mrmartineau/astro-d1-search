@@ -1,0 +1,101 @@
+---
+layout: ../../layouts/Layout.astro
+title: Deploying
+order: 4
+description: CI ordering, API token scopes, local development, and sharing one database across sites.
+---
+
+## The ordering rule
+
+Deploy the site **first**, then push the index. The index is what makes a page findable; the deploy
+is what makes it exist. Doing it the other way round leaves a window where search returns links to
+pages that 404.
+
+```yaml
+- run: pnpm install --frozen-lockfile
+- run: pnpm build
+
+- name: Deploy
+  run: npx wrangler pages deploy dist --project-name=my-site
+  env:
+    CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+- name: Push search index
+  run: pnpm search:push
+  env:
+    CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+```
+
+### API token scopes
+
+The token needs **Account → D1 → Edit** on top of whatever your deploy already uses (Pages Edit, or
+Workers Scripts Edit). Pushing the index is a D1 write, and a deploy-only token will fail with a
+permissions error at the `wrangler d1 execute` step.
+
+## Local development
+
+```sh
+pnpm search:index   # push to the local D1 database
+pnpm dev
+```
+
+`platformProxy: { enabled: true }` on the Cloudflare adapter is what gives `astro dev` the binding.
+Local D1 data lives in `.wrangler/state/v3/d1` — gitignored, disposable, and completely separate
+from production. Delete the directory and re-run `pnpm search:index` if it ever gets into a weird
+state.
+
+Because it's a real SQLite database, you can poke at it directly:
+
+```sh
+wrangler d1 execute my-site-search --local \
+  --command "SELECT type, count(*) FROM search_index GROUP BY type"
+```
+
+## Content updates without a deploy
+
+If your content changes independently of a deploy — a scheduled rebuild, a CMS webhook — run
+`pnpm search:push` on its own. It's a standalone script; nothing about it requires the site to have
+just been built.
+
+Each push is a **full rebuild**: delete everything, insert everything. There's a brief moment
+mid-push where the index is empty and search returns nothing. At personal-site scale (a few hundred
+documents, a second or two) that's an acceptable trade for the simplicity of never tracking
+per-document state.
+
+## Sharing one database across sites
+
+Set a distinct `site` value per project and point them all at the same `database`:
+
+```ts
+// site-a/search.config.ts
+{ database: 'shared-search', site: 'site-a.com', sources: [...] }
+
+// site-b/search.config.ts
+{ database: 'shared-search', site: 'site-b.com', sources: [...] }
+```
+
+With `site` set, a push deletes only that site's rows (`DELETE FROM search_index WHERE site = ?`)
+before inserting, so the two sites can index independently without clobbering each other.
+
+Each site's own endpoint still serves its own content. If you want a cross-site search endpoint,
+query the table without a site filter from a separate Worker — the `site` column is right there.
+
+## Securing the endpoint
+
+The endpoint is open by default and sends `Access-Control-Allow-Origin: *`. That's deliberate: it
+serves the same content as your public site, and an open endpoint is what lets external clients — a
+Raycast extension, a CLI, another site — use it.
+
+If your site isn't public, either:
+
+- set `apiRoute: false` to skip injecting the route entirely and use `searchIndex()` from
+  server-rendered pages only, or
+- set `cors: false` and put a Cloudflare Access policy or a token check in front of the route.
+
+## Cost
+
+D1's free tier is 5GB of storage and 5 million rows read per day. A few hundred documents is a
+handful of megabytes, and edge caching means repeated queries never reach D1 at all. A typical
+content site stays several orders of magnitude inside the free tier.

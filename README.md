@@ -1,113 +1,239 @@
-# zed-package-starter
+# astro-d1-search
 
-A starter template for building TypeScript npm packages with ESM + CJS dual output, Vite+ (`vp`) linting/formatting, Bun testing, automated releases via semantic-release, and a documentation website built with Astro + [ZUI](https://github.com/mrmartineau/zui).
+Site search for [Astro](https://astro.build) backed by [Cloudflare D1](https://developers.cloudflare.com/d1/) (SQLite [FTS5](https://www.sqlite.org/fts5.html)).
 
-This repository is meant to be copied and customised for each new package you publish.
+One integration gives you:
 
-## What's included
+- **Build-time indexing** of any markdown/MDX content (content collections, standalone pages, anything) into a D1 full-text index
+- **An injected API endpoint** (`GET /api/search`) with bm25 + recency ranking, highlighted snippets, type filtering, input validation and edge caching
+- **A query function** (`searchIndex`) for server-rendered search pages that hit the D1 binding directly
+- **Content-type agnostic design**: types are strings you choose; one index can serve site-wide and per-section search, and even several sites at once
 
-- pnpm monorepo: the package at the repo root (`src/`), docs site in `docs/`
-- Bundling with `tsdown` (ESM + CJS output with `.d.mts` / `.d.cts` types)
-- Linting, formatting, and type-aware checks with Vite+ (`vp check`)
-- Pre-commit hook (`vp staged`) installed automatically via `vp config`
-- Testing with Bun
-- Automated releases via `semantic-release`, with a generated `CHANGELOG.md`
-- Docs site using [`@mrmartineau/zui-theme`](https://www.npmjs.com/package/@mrmartineau/zui-theme), deployed to Cloudflare Workers
-- GitHub Actions CI: build/test, docs deploy, npm release, supply-chain scan
+Requires the [`@astrojs/cloudflare`](https://docs.astro.build/en/guides/integrations-guide/cloudflare/) adapter. The rest of your site can stay fully static; only the search endpoint runs server-side.
 
-## How to use this template
+📖 **Full documentation**: the [`docs/`](./docs) site (`pnpm run docs:dev` to read it locally, `pnpm run docs:deploy` to publish it).
 
-1. Create a new repository from this one, or clone/copy it into a new folder.
-2. Update `package.json`:
-   - change `name`
-   - change `description`
-   - update `repository`, `homepage`, and `bugs` fields
-3. Update `docs/src/site.config.ts` (title, description, links) and `docs/wrangler.jsonc` (`name`).
-4. Replace the starter implementation in `src/index.ts` with your package code.
-5. Add any runtime dependencies your package needs.
-6. Install dependencies and start developing.
-7. Add repository secrets in GitHub: `NPM_TOKEN` (publishing), `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` (docs deploys).
+## Install
 
-## Install dependencies
+```sh
+pnpm add astro-d1-search
+```
 
-```bash
+## Quick start
+
+### 1. Create the database
+
+```sh
+wrangler d1 create my-site-search
+```
+
+### 2. Configure the binding
+
+Add to `wrangler.toml` (the integration checks this at startup and warns with this exact snippet if it's missing):
+
+```toml
+pages_build_output_dir = "./dist"   # if deploying with `wrangler pages deploy`
+
+[[d1_databases]]
+binding = "SEARCH_DB"
+database_name = "my-site-search"
+database_id = "<id from step 1>"
+```
+
+If you deploy with `wrangler pages deploy` (or Workers with assets), the binding is applied from this file on deploy — no dashboard configuration needed.
+
+There is **no migration step**: the indexer creates the FTS5 table on first push (`CREATE VIRTUAL TABLE IF NOT EXISTS`).
+
+### 3. Add the integration
+
+```js
+// astro.config.mjs
+import cloudflare from "@astrojs/cloudflare";
+import { defineConfig } from "astro/config";
+import d1Search from "astro-d1-search";
+
+export default defineConfig({
+  output: "static",
+  adapter: cloudflare({ platformProxy: { enabled: true } }),
+  integrations: [
+    d1Search({
+      database: "my-site-search",
+      sources: [
+        { dir: "src/content/blog", type: "blog", url: "/blog/:slug" },
+        { dir: "src/content/notes", type: "note", url: "/notes/:slug" },
+        { files: ["src/pages/about.mdx"], type: "page", url: "/:slug" },
+      ],
+    }),
+  ],
+});
+```
+
+`platformProxy` matters: it gives `astro dev` access to your **local** D1 database, so the whole stack works offline.
+
+### 4. Index your content
+
+Add package scripts:
+
+```json
+"search:index": "tsx scripts/build-search-index.ts",
+"search:push": "tsx scripts/build-search-index.ts --target=remote"
+```
+
+with a three-line script:
+
+```ts
+// scripts/build-search-index.ts
+import { runCli } from "astro-d1-search/indexer";
+import searchConfig from "../search.config";
+
+runCli(searchConfig);
+```
+
+Keep the options object in its own module (e.g. `search.config.ts`) so the Astro config and the index script share one source of truth.
+
+Run `pnpm search:index`, start `astro dev`, and `http://localhost:4321/api/search?q=hello` is live.
+
+### 5. Automate in CI
+
+Deploy first, then push the index, so new pages exist before they're searchable:
+
+```yaml
+- run: pnpm build
+- run: npx wrangler pages deploy dist --project-name=my-site
+- run: pnpm search:push
+  env:
+    CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+```
+
+The API token needs **Account → D1 → Edit** alongside the usual deploy scope.
+
+## Options
+
+| Option                                      | Default                                              | Description                                                                                                          |
+| ------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `database`                                  | required                                             | D1 database name (`wrangler d1 create <name>`)                                                                       |
+| `binding`                                   | `'SEARCH_DB'`                                        | D1 binding name in wrangler config                                                                                   |
+| `site`                                      | `''`                                                 | Value for the `site` column. When set, pushes replace only this site's rows, so several sites can share one database |
+| `sources`                                   | required                                             | Content sources; see below                                                                                           |
+| `apiRoute`                                  | `'/api/search'`                                      | Injected endpoint pattern, or `false` to disable                                                                     |
+| `cors`                                      | `true`                                               | Send `Access-Control-Allow-Origin: *`                                                                                |
+| `cacheMaxAge`                               | `300`                                                | `Cache-Control` max-age (seconds); also used for edge caching                                                        |
+| `maxLimit` / `maxOffset` / `maxQueryLength` | `25` / `200` / `100`                                 | Request validation caps                                                                                              |
+| `weights`                                   | `{ title: 10, description: 5, content: 1, tags: 3 }` | bm25 per-column weights                                                                                              |
+| `recency`                                   | `{ boost: 0.35, windowDays: 1095 }`                  | Recency multiplier: ×(1 + boost) today, linear falloff to ×1 at `windowDays`. `boost: 0` disables                    |
+| `maxTerms`                                  | `8`                                                  | Max terms taken from a query                                                                                         |
+| `snippetTokens`                             | `24`                                                 | Approximate snippet length                                                                                           |
+| `maxContentLength`                          | `8000`                                               | Content truncation per document (characters)                                                                         |
+
+### Sources
+
+Each source maps files to a `type` and a URL pattern:
+
+```ts
+{ dir: 'src/content/blog', type: 'blog', url: '/blog/:slug' }
+{ files: ['src/pages/about.mdx'], type: 'page', url: '/:slug' }
+{ dir: 'src/content/worklog', type: 'worklog', url: '/worklog' } // no :slug — all docs share one page
+```
+
+- `:slug` is replaced with the document slug, resolved the same way Astro does it: frontmatter `slug` if present, otherwise the file name (or directory name for `<dir>/index.md`).
+- Frontmatter used per document: `title` (required — untitled documents are skipped), `subtitle`/`description`, `tags`, `date`/`modified`, `emoji`.
+- `type` is any string you like. The endpoint validates its `type` param against the set of types in your sources.
+- Markdown is flattened to plain text. Text inside code fences is **kept** (so code is searchable); fences, inline-code backticks, markdown syntax, HTML/JSX tags and MDX imports are stripped.
+
+## The API
+
+```
+GET /api/search?q=<query>&limit=<n>&offset=<n>&type=<type>
+```
+
+Response:
+
+```json
+{
+  "query": "css grid",
+  "results": [
+    {
+      "title": "CSS Grid",
+      "url": "https://example.com/notes/css-grid",
+      "type": "note",
+      "date": "2023-01-20",
+      "tags": "css",
+      "emoji": "🍱",
+      "snippet": "…display: <mark>grid</mark>; <mark>grid</mark>-template…",
+      "score": -7.71
+    }
+  ]
+}
+```
+
+- Results are ranked by bm25 × recency multiplier; **lower (more negative) score = better match**.
+- `snippet` contains `<mark>` around matched terms. Safe to render as HTML only if your indexed content is trusted (your own markdown normally is).
+- Queries shorter than 2 characters return an empty result set; malformed `limit`/`offset`/`type` return 400.
+- User input never reaches FTS5 raw: every term is quoted (neutralising `AND`/`OR`/`NEAR()`/`*`/`-` operators) and the last term gets a `*` suffix for prefix matching — search-as-you-type works out of the box.
+- Responses are cached at the Cloudflare edge under a canonicalised key (lowercased query, fixed param order), so repeated queries don't hit D1.
+
+## Server-rendered search pages
+
+Skip HTTP and query D1 directly from a page's frontmatter:
+
+```astro
+---
+export const prerender = false
+
+import { resolveConfig, searchIndex } from 'astro-d1-search/core'
+import searchConfig from '../../search.config'
+
+const config = resolveConfig(searchConfig)
+const query = Astro.url.searchParams.get('q')?.trim() || ''
+
+const results =
+  query.length >= 2
+    ? await searchIndex(Astro.locals.runtime.env.SEARCH_DB, { query, limit: 25 }, config)
+    : []
+---
+
+{
+  results.map((result) => (
+    <article>
+      <a href={result.url}>{result.title}</a>
+      {result.snippet && <p set:html={result.snippet} />}
+    </article>
+  ))
+}
+```
+
+Pass `type: 'note'` (or any of your types) for a section-scoped search page.
+
+## Multi-site
+
+Set a distinct `site` per project and point them all at the same `database`. Each site's index push replaces only its own rows (`DELETE ... WHERE site = ?`), and each site's endpoint serves its own content. A shared cross-site endpoint is then one Worker away.
+
+## Constraints
+
+- **Full rebuild per push**: the index is briefly empty (or site-scoped-empty) mid-push. Fine at personal-site scale.
+- **`porter` stemming is English-only.** The schema uses `tokenize = 'porter unicode61'`; fork the schema in `indexer.ts` for multilingual content.
+- **Open endpoint by default.** It serves the same data as your public site. Put it behind a token check if yours isn't public.
+- **D1 free tier**: 5GB storage, 5M rows read/day — orders of magnitude above a typical content site's needs.
+
+## Contributing
+
+This repo is a pnpm monorepo: the package at the root (`src/`), the documentation site in `docs/`.
+
+```sh
 pnpm install
+pnpm run build      # tsdown → dist/ (ESM + .d.mts)
+pnpm run dev        # rebuild on change
+pnpm run test       # bun test
+pnpm run check      # vp check --fix (format + lint + typecheck)
+pnpm run docs:dev   # docs site dev server
+pnpm run docs:build # build the docs site
 ```
 
-## Development
-
-```bash
-# Build ESM, CJS, and type declarations
-pnpm run build
-
-# Rebuild on file changes
-pnpm run dev
-
-# Check & fix formatting + linting + types
-pnpm run check
-
-# Run tests
-pnpm run test
-```
-
-## Documentation site
-
-```bash
-pnpm run docs:dev     # dev server
-pnpm run docs:build   # production build
-pnpm run docs:deploy  # build + deploy to Cloudflare (needs wrangler auth)
-```
-
-Docs pages are MDX files in `docs/src/pages/<section>/` — the sidebar builds itself from the file structure. The package changelog is rendered at `/changelog`. See `AGENTS.md` for the full writing guide.
-
-## Releasing
-
-Run the **NPM Release** workflow from the Actions tab. Version bumps follow [conventional commits](https://www.conventionalcommits.org/):
-
-- `fix:` → patch
-- `feat:` → minor
-- `feat!:` or `BREAKING CHANGE:` → major
-
-Release notes are prepended to `CHANGELOG.md` automatically. The release job requires a `NPM_TOKEN` repository secret; `GITHUB_TOKEN` is provided automatically by GitHub Actions.
-
-## Project structure
-
-```text
-.
-├── .github/
-│   └── workflows/
-│       ├── build-test.yml
-│       ├── deploy-docs.yml
-│       ├── release.yml
-│       └── security.yml
-├── docs/               # Astro docs site (@mrmartineau/zui-theme)
-├── src/
-│   ├── index.ts
-│   └── index.test.ts
-├── CHANGELOG.md
-├── package.json
-├── pnpm-workspace.yaml
-├── release.config.mjs
-├── tsconfig.json
-└── vite.config.ts      # Vite+ tooling config (staged, fmt, lint)
-```
-
-## Agent Skill
-
-This repo includes an agent skill (`SKILL.md`) that teaches AI coding agents how to scaffold new npm packages using this template's conventions. Install it with [`npx skills`](https://github.com/vercel-labs/skills):
-
-```bash
-# Interactive — choose your agent(s) and scope
-npx skills add mrmartineau/zed-package-starter
-
-# Install globally for Claude Code
-npx skills add mrmartineau/zed-package-starter -g -a claude-code
-```
-
-Once installed, your agent will automatically use this skill when asked to create or scaffold a new npm package.
+See `AGENTS.md` for the full contributor and agent guide.
 
 ## License
 
-[ISC](https://choosealicense.com/licenses/isc/) © [Zander Martineau](https://zander.wtf)
+[MIT](https://choosealicense.com/licenses/mit/) © [Zander Martineau](https://zander.wtf)
 
 > Made by Zander • [zander.wtf](https://zander.wtf) • [GitHub](https://github.com/mrmartineau/)

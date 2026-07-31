@@ -2,28 +2,184 @@
 layout: ../../layouts/Layout.astro
 title: Getting started
 order: 1
-description: Install your package and add it to a project.
+description: Install the package, create a D1 database, and get a working search endpoint.
 ---
 
 ## Install
 
 ```sh
-npm install your-package
+pnpm add astro-d1-search
 ```
 
-## Use it
+`astro` is a peer dependency (v5, v6 or v7). You also need the
+[`@astrojs/cloudflare`](https://docs.astro.build/en/guides/integrations-guide/cloudflare/) adapter
+and [`wrangler`](https://developers.cloudflare.com/workers/wrangler/), if you don't have them
+already:
 
-Document your package's API here. Write standard Markdown, drop in code blocks,
-and they'll be syntax-highlighted automatically.
+```sh
+pnpm add @astrojs/cloudflare
+pnpm add -D wrangler
+```
+
+## 1. Create the database
+
+```sh
+wrangler d1 create my-site-search
+```
+
+Wrangler prints a `database_id` — keep it for the next step.
+
+## 2. Configure the binding
+
+Add the database to your wrangler config. For a Pages project (`wrangler.toml`):
+
+```toml
+pages_build_output_dir = "./dist"
+
+[[d1_databases]]
+binding = "SEARCH_DB"
+database_name = "my-site-search"
+database_id = "<id from step 1>"
+```
+
+Or for a Worker with assets (`wrangler.jsonc`):
+
+```jsonc
+{
+  "d1_databases": [
+    {
+      "binding": "SEARCH_DB",
+      "database_name": "my-site-search",
+      "database_id": "<id from step 1>",
+    },
+  ],
+}
+```
+
+The binding is applied from this file on deploy — there is nothing to configure in the Cloudflare
+dashboard.
+
+The integration reads your wrangler config at startup and warns, with a copy-pasteable snippet, if
+it can't find the binding. It's a plain string search, deliberately not a TOML/JSON parse, so any
+config format works.
+
+> There is **no migration step**. The indexer prepends `CREATE VIRTUAL TABLE IF NOT EXISTS` to
+> every push, so the FTS5 table is created on the first run.
+
+## 3. Extract your config
+
+Both the Astro integration and the index script need the same options, so put them in their own
+module at the project root:
 
 ```ts
-import { thing } from "your-package";
+// search.config.ts
+import type { D1SearchOptions } from "astro-d1-search";
 
-thing();
+const searchConfig: D1SearchOptions = {
+  database: "my-site-search",
+  sources: [
+    { dir: "src/content/blog", type: "blog", url: "/blog/:slug" },
+    { dir: "src/content/notes", type: "note", url: "/notes/:slug" },
+    { files: ["src/pages/about.mdx"], type: "page", url: "/:slug" },
+  ],
+};
+
+export default searchConfig;
 ```
 
-## Add a new page
+One source of truth means the endpoint's ranking can never drift from the ranking your index was
+built with.
 
-Create a new `.mdx` file anywhere under `src/pages/<section>/` and it shows up in
-the sidebar automatically. For example, `src/pages/guides/configuration.mdx`
-adds a "Configuration" entry to the Guides section.
+## 4. Add the integration
+
+```js
+// astro.config.mjs
+import cloudflare from "@astrojs/cloudflare";
+import { defineConfig } from "astro/config";
+import d1Search from "astro-d1-search";
+import searchConfig from "./search.config.ts";
+
+export default defineConfig({
+  output: "static",
+  adapter: cloudflare({ platformProxy: { enabled: true } }),
+  integrations: [d1Search(searchConfig)],
+});
+```
+
+`platformProxy: { enabled: true }` is the part that makes local development work: it exposes your
+wrangler bindings — including the **local** D1 database — to `astro dev` via
+`Astro.locals.runtime.env`. Without it the endpoint returns a 500 telling you the binding is
+missing.
+
+The integration does three things:
+
+- injects the `/api/search` route (server-rendered, even in a static build)
+- registers a Vite plugin serving `virtual:astro-d1-search-config`, so the route gets your
+  ranking and validation settings at build time
+- validates your wrangler config
+
+## 5. Build the index
+
+Add a small script that hands your config to the indexer CLI:
+
+```ts
+// scripts/build-search-index.ts
+import { runCli } from "astro-d1-search/indexer";
+import searchConfig from "../search.config";
+
+runCli(searchConfig);
+```
+
+and the scripts to run it:
+
+```json
+{
+  "scripts": {
+    "search:index": "tsx scripts/build-search-index.ts",
+    "search:push": "tsx scripts/build-search-index.ts --target=remote"
+  }
+}
+```
+
+Then:
+
+```sh
+pnpm search:index
+```
+
+```
+[astro-d1-search] indexing 214 documents: { blog: 61, note: 148, page: 5 }
+[astro-d1-search] pushed index to local D1 (my-site-search)
+```
+
+## 6. Try it
+
+```sh
+pnpm dev
+curl "http://localhost:4321/api/search?q=hello"
+```
+
+```json
+{
+  "query": "hello",
+  "results": [
+    {
+      "title": "Hello world",
+      "url": "http://localhost:4321/blog/hello-world",
+      "type": "blog",
+      "date": "2024-03-01",
+      "tags": "intro",
+      "emoji": "",
+      "snippet": "…saying <mark>hello</mark> to the world…",
+      "score": -8.12
+    }
+  ]
+}
+```
+
+## Next steps
+
+- [Indexing content](/guides/indexing-content) — sources, slugs, frontmatter, what gets stripped
+- [Search pages](/guides/search-pages) — server-rendered search without the HTTP round trip
+- [Deploying](/guides/deploying) — CI ordering, API token scopes, sharing one database
+- [Configuration](/reference/configuration) — every option, with defaults

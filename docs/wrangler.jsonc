@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "zed-package-starter-docs",
+  "name": "astro-d1-search-docs",
   "compatibility_date": "2026-07-08",
   "compatibility_flags": ["nodejs_compat"],
   // Static Astro build output served as assets from a Worker. The

@@ -1,0 +1,122 @@
+---
+layout: ../../layouts/Layout.astro
+title: Ranking
+order: 3
+description: How bm25 weights and the recency multiplier combine into a score, and how to tune them.
+---
+
+Results are ordered by a single number:
+
+```
+score = bm25(title, description, content, tags) × recencyMultiplier
+```
+
+bm25 returns a **negative** number, and more negative means a better match. Multiplying by a
+recency factor greater than 1 therefore pushes recent documents further down the number line —
+towards the top of the results. The query orders by `score` ascending.
+
+## bm25 weights
+
+FTS5's built-in `bm25()` scores a row against the query, weighting each indexed column:
+
+```sql
+bm25(search_index, 10.0, 5.0, 1.0, 3.0)
+--                 title  desc  content  tags
+```
+
+The defaults:
+
+| Column        | Weight | Reasoning                                                      |
+| ------------- | ------ | -------------------------------------------------------------- |
+| `title`       | `10`   | A title match is nearly always what someone meant              |
+| `description` | `5`    | Hand-written summary; high signal, low noise                   |
+| `tags`        | `3`    | Deliberate categorisation, but coarse                          |
+| `content`     | `1`    | The baseline. Long documents match lots of things incidentally |
+
+Only the ratios matter, not the absolute values. Change them with `weights`; a partial object is
+merged with the defaults:
+
+```ts
+weights: {
+  title: 20;
+} // title matches now dominate; the rest keep their defaults
+```
+
+Some directions worth knowing:
+
+- **Raise `title`** if the top result is often a long article that mentions the term in passing
+  rather than the page actually about it.
+- **Raise `tags`** if your tags are well-curated and you want tag matches to behave like
+  category browsing.
+- **Lower `content`** rather than raising everything else — it produces the same ordering with
+  smaller numbers.
+
+## The recency multiplier
+
+```
+multiplier = 1 + boost × max(0, 1 − ageInDays / windowDays)
+```
+
+With the defaults (`boost: 0.35`, `windowDays: 1095`):
+
+| Document age | Multiplier |
+| ------------ | ---------- |
+| Today        | `×1.35`    |
+| 1 year       | `×1.23`    |
+| 2 years      | `×1.12`    |
+| 3 years +    | `×1.00`    |
+
+Undated documents get `×1.00` — no boost, but no penalty either. Evergreen pages like an about page
+aren't pushed down just for lacking a `date`.
+
+The intent is a tiebreaker, not an override: a 35% nudge reorders documents that are already close
+in relevance, and won't float a barely-relevant new post above a strongly-matching old one.
+
+### Tuning it
+
+```ts
+recency: { boost: 0, windowDays: 1095 }      // off — pure relevance
+recency: { boost: 0.15, windowDays: 365 }    // gentle, one-year window
+recency: { boost: 0.6, windowDays: 180 }     // aggressive; news-style content
+```
+
+Documentation and reference sites usually want `boost: 0` — the correct answer doesn't get less
+correct with age. News, changelogs and personal blogs benefit from more.
+
+Changing these takes effect immediately for the endpoint and for pages that pass the resolved
+config; **no reindex is needed**. Ranking is computed at query time, and only the `date` column is
+stored.
+
+## Snippets
+
+`snippet(search_index, 2, '<mark>', '</mark>', '…', 24)` asks FTS5 for roughly 24 tokens of the
+`content` column around the best-matching passage, with `<mark>` around matched terms and `…` where
+it's been trimmed. Adjust the length with `snippetTokens`.
+
+Because column index `2` is `content`, a document matched only on its title or tags may come back
+with an empty `snippet` — the code that renders results should handle `''`.
+
+## Inspecting scores
+
+The endpoint returns `score` on every result, which makes tuning empirical rather than a guess:
+
+```sh
+curl -s "http://localhost:4321/api/search?q=css+grid&limit=5" | jq '.results[] | {title, score}'
+```
+
+```json
+{ "title": "CSS Grid", "score": -10.4 }
+{ "title": "Layout patterns", "score": -7.71 }
+{ "title": "A 2019 retrospective", "score": -2.13 }
+```
+
+Change a weight, re-run, and compare. Nothing needs rebuilding between runs.
+
+## Stemming
+
+The schema uses `tokenize = 'porter unicode61'`. Porter stemming means "running" matches "run", and
+unicode61 handles accented characters and case folding.
+
+Porter is **English-only**. For content in other languages, replace `SCHEMA_SQL` with a fork using a
+different tokenizer, and rebuild the index — the tokenizer is fixed at table creation, so you'll
+need to drop the table first.

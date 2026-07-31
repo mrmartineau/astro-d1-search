@@ -26,5 +26,5 @@
   "engines": {
     "node": ">=22.12.0"
   },
-  "portless": "zed-package-starter-docs"
+  "portless": "astro-d1-search-docs"
 }

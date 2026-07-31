@@ -1,0 +1,163 @@
+---
+layout: ../../layouts/Layout.astro
+title: Search pages
+order: 3
+description: Query D1 directly from a server-rendered Astro page, or hit the injected endpoint from the client.
+---
+
+export const prerender = true; // Keep. Astro scans code fences for a `prerender` export, and the `prerender = false` example below would otherwise make this page server-rendered — a 404 on the assets-only docs Worker.
+
+There are two ways to search: call `searchIndex()` from a server-rendered page, or fetch the
+injected `/api/search` endpoint. Server-rendered pages skip a network round trip and work without
+JavaScript; the endpoint is what you want for search-as-you-type and for external consumers.
+
+## A server-rendered search page
+
+```astro
+---
+export const prerender = false;
+
+import { resolveConfig, searchIndex } from "astro-d1-search/core";
+import searchConfig from "../../search.config";
+
+const config = resolveConfig(searchConfig);
+const query = Astro.url.searchParams.get("q")?.trim() || "";
+
+const results =
+  query.length >= 2
+    ? await searchIndex(Astro.locals.runtime.env.SEARCH_DB, { query, limit: 25 }, config)
+    : [];
+---
+
+<form method="get" action="/search">
+  <input type="search" name="q" value={query} placeholder="Search…" />
+  <button type="submit">Search</button>
+</form>
+
+{
+  results.map((result) => (
+    <article>
+      <a href={result.url}>
+        {result.emoji} {result.title}
+      </a>
+      {result.snippet && <p set:html={result.snippet} />}
+    </article>
+  ))
+}
+```
+
+Three things matter here:
+
+- **`export const prerender = false`** — the page must run on the server to reach the binding.
+- **`resolveConfig(searchConfig)`** turns your options object into the resolved config, filling in
+  every default. Pass it as the third argument so the page ranks results exactly like the endpoint
+  does. Omit it and you get `DEFAULT_RANKING`, which is only correct if you never customised
+  `weights` or `recency`.
+- **`set:html`** renders the `<mark>` tags in the snippet. That's safe for your own markdown; see
+  [the endpoint reference](/reference/api-endpoint#snippets-and-html) before pointing this at
+  content you don't control.
+
+### A thin site-specific wrapper
+
+Binding the config once, in a util module, keeps every page a one-liner:
+
+```ts
+// src/utils/search.ts
+import {
+  type D1Like,
+  resolveConfig,
+  searchIndex as coreSearchIndex,
+  type SearchOptions,
+} from "astro-d1-search/core";
+import searchConfig from "../../search.config";
+
+const config = resolveConfig(searchConfig);
+
+export function searchIndex(db: D1Like, options: SearchOptions) {
+  return coreSearchIndex(db, options, config);
+}
+```
+
+Importing from `astro-d1-search/core` rather than the package root keeps the Node-only indexer out
+of your Worker bundle.
+
+### A section-scoped page
+
+Pass `type` to restrict a page to one content type — a notes-only search at `/notes/search`, say:
+
+```ts
+const results = await searchIndex(db, { query, type: "note", limit: 25 });
+```
+
+### Paging
+
+`limit` and `offset` do what you'd expect. Ask for one more result than you show to find out
+whether there's a next page:
+
+```ts
+const page = Number(Astro.url.searchParams.get("page") ?? 1);
+const perPage = 20;
+
+const results = await searchIndex(db, {
+  query,
+  limit: perPage + 1,
+  offset: (page - 1) * perPage,
+});
+
+const hasMore = results.length > perPage;
+const visible = results.slice(0, perPage);
+```
+
+FTS5 has no cheap total count, so a "showing 1–20 of 137" style counter would mean a second query.
+A next/previous pager is the cheaper design.
+
+## Client-side search
+
+For search-as-you-type, fetch the endpoint. Every query is a prefix match on its last term, so
+partial words already return sensible results:
+
+```ts
+const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=8`);
+const { results } = await response.json();
+```
+
+Debounce the input (150–250ms is comfortable) and abort the in-flight request when a new keystroke
+arrives:
+
+```ts
+let controller: AbortController | undefined;
+
+async function search(query: string) {
+  controller?.abort();
+  controller = new AbortController();
+
+  const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=8`, {
+    signal: controller.signal,
+  });
+  return response.json();
+}
+```
+
+Repeated queries are served from the Cloudflare edge cache rather than D1, so a popular query costs
+you nothing after the first hit.
+
+## Rendering results
+
+Every result carries what a decent result row needs:
+
+| Field     | Use                                                                         |
+| --------- | --------------------------------------------------------------------------- |
+| `title`   | The link text                                                               |
+| `url`     | Relative from `searchIndex()`, absolute from the endpoint                   |
+| `type`    | Badge or grouping — one of the types from your `sources`                    |
+| `date`    | `YYYY-MM-DD`, or `''` for undated documents                                 |
+| `tags`    | Space-separated string, not an array (it's one FTS5 column)                 |
+| `emoji`   | Prefix for the title, `''` if unset                                         |
+| `snippet` | Matched text with `<mark>` around the terms, `''` if nothing matched        |
+| `score`   | bm25 × recency. **Lower (more negative) is better** — results arrive sorted |
+
+Grouping by `type` is a nice touch for site-wide search:
+
+```ts
+const grouped = Object.groupBy(results, (result) => result.type);
+```

@@ -1,0 +1,165 @@
+---
+layout: ../../layouts/Layout.astro
+title: Configuration
+order: 1
+description: Every option accepted by the integration, with its default and what it affects.
+---
+
+The same options object is consumed by the integration, the indexer and `resolveConfig()`. Keep it
+in its own module so all three agree.
+
+```ts
+// search.config.ts
+import type { D1SearchOptions } from "astro-d1-search";
+
+const searchConfig: D1SearchOptions = {
+  database: "my-site-search",
+  sources: [{ dir: "src/content/blog", type: "blog", url: "/blog/:slug" }],
+};
+
+export default searchConfig;
+```
+
+## Database
+
+### `database`
+
+**Required.** `string`
+
+The D1 database name, as created with `wrangler d1 create <name>`. Used by the indexer's
+`wrangler d1 execute` call and by the wrangler-config check at startup.
+
+### `binding`
+
+`string` — default `'SEARCH_DB'`
+
+The binding name in your wrangler config. Must match the `binding` field of the `[[d1_databases]]`
+entry; that's the key the route looks up on `Astro.locals.runtime.env`.
+
+### `site`
+
+`string` — default `''`
+
+Value stored in the `site` column of every row. When set, an index push deletes only rows with this
+value before inserting, so several sites can share one database. Leave it empty and each push wipes
+the whole table. See [sharing one database](/guides/deploying#sharing-one-database-across-sites).
+
+## Content
+
+### `sources`
+
+**Required.** `SearchSource[]`
+
+Which files to index and how they map to URLs. Each entry needs either `dir` or `files`.
+
+```ts
+type SearchSource = {
+  dir?: string; // directory scanned recursively for .md/.mdx
+  files?: string[]; // explicit file list, alternative to `dir`
+  type: string; // stored with every document from this source
+  url: string; // URL pattern; `:slug` is substituted per document
+  skipDirs?: string[]; // directory names to skip. Default: ['Templates']
+};
+```
+
+The set of distinct `type` values becomes the allowlist the endpoint validates its `type` parameter
+against. Full detail in [Indexing content](/guides/indexing-content).
+
+### `maxContentLength`
+
+`number` — default `8000`
+
+Characters of body text kept per document. Longer documents are truncated; their title, description
+and tags are indexed in full regardless.
+
+## The endpoint
+
+### `apiRoute`
+
+`string | false` — default `'/api/search'`
+
+Route pattern for the injected endpoint. Set to `false` to skip injection entirely — useful if you
+only query D1 from [server-rendered pages](/guides/search-pages).
+
+### `cors`
+
+`boolean` — default `true`
+
+Send `Access-Control-Allow-Origin: *` on responses. Turn it off if the endpoint shouldn't be
+callable cross-origin.
+
+### `cacheMaxAge`
+
+`number` — default `300`
+
+Seconds for the `Cache-Control: public, max-age=<n>` header. Also governs how long the Cloudflare
+edge holds a cached response.
+
+### `maxLimit`
+
+`number` — default `25`
+
+Hard cap on the `limit` query parameter. Larger values are clamped rather than rejected.
+
+### `maxOffset`
+
+`number` — default `200`
+
+Hard cap on `offset`. Beyond this, the endpoint returns `400`. Deep paging over full-text results is
+rarely useful and it's an easy way to make someone else's database do work.
+
+### `maxQueryLength`
+
+`number` — default `100`
+
+Maximum query string length. Longer queries return `400`.
+
+## Ranking
+
+### `weights`
+
+`{ title, description, content, tags }` — default `{ title: 10, description: 5, content: 1, tags: 3 }`
+
+Per-column bm25 weights. Higher means a match in that column counts for more. Partial objects are
+merged with the defaults, so `weights: { title: 20 }` leaves the other three alone.
+
+### `recency`
+
+`{ boost, windowDays }` — default `{ boost: 0.35, windowDays: 1095 }`
+
+A document published today has its relevance multiplied by `1 + boost`, falling linearly to `×1` at
+`windowDays` old. Undated documents get no boost. `boost: 0` disables it. See
+[Ranking](/reference/ranking).
+
+### `maxTerms`
+
+`number` — default `8`
+
+Terms taken from a query; the rest are dropped. Caps how much work one query can ask FTS5 to do.
+
+### `snippetTokens`
+
+`number` — default `24`
+
+Approximate token count of the highlighted snippet FTS5 generates.
+
+## Resolved config
+
+`resolveConfig()` turns an options object into a fully-populated `ResolvedD1SearchConfig` — every
+default filled in, sources normalised, `types` derived. It throws on invalid configuration:
+
+- `database` missing
+- `sources` empty or absent
+- a source with neither `dir` nor `files`
+
+```ts
+// Or "astro-d1-search/core" in anything that ships to the Worker
+import { resolveConfig } from "astro-d1-search";
+import searchConfig from "./search.config";
+
+const config = resolveConfig(searchConfig);
+config.binding; // 'SEARCH_DB'
+config.types; // ['blog', 'note', 'page']
+```
+
+Pass the result to `searchIndex()` so pages rank results exactly like the endpoint does.

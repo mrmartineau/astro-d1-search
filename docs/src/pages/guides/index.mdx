@@ -2,22 +2,32 @@
 layout: ../../layouts/Layout.astro
 title: Guides
 sectionOrder: 1
-description: Learn how to install and use the package.
+description: From an empty database to an indexed, deployed search endpoint.
 ---
 
 import SectionCards from "../../components/SectionCards.astro";
 
-Welcome to the docs. This site is generated with
-[`@mrmartineau/zui-theme`](https://github.com/mrmartineau/zui) — an Astro docs
-theme built on [ZUI](https://github.com/mrmartineau/zui).
+`astro-d1-search` turns your markdown into a [Cloudflare D1](https://developers.cloudflare.com/d1/)
+full-text index and gives your Astro site a search API on top of it.
 
-## How this site works
+There are three moving parts, and these guides walk through them in order:
 
-- Every `.mdx` file under `src/pages/<section>/` becomes a sidebar entry.
-- Each section's `index.mdx` sets the section's `sectionOrder` (and appears at
-  the top of its sidebar group).
-- Set `order` in a page's frontmatter to control its position in the sidebar.
-- Edit `src/site.config.ts` to change the site name, links, and version.
+1. **The integration** — added to `astro.config.mjs`. It injects the `/api/search` route and hands
+   your ranking config to it.
+2. **The indexer** — a build-time script that parses your content, generates SQL, and pushes it to
+   D1 through `wrangler`.
+3. **The query layer** — either the injected HTTP endpoint, or `searchIndex()` called directly from
+   a server-rendered page.
+
+## Prerequisites
+
+- An Astro project using the
+  [`@astrojs/cloudflare`](https://docs.astro.build/en/guides/integrations-guide/cloudflare/)
+  adapter. `output: 'static'` is fine — only the search endpoint is server-rendered.
+- A Cloudflare account with [`wrangler`](https://developers.cloudflare.com/workers/wrangler/)
+  authenticated locally (`wrangler login`).
+- Content as markdown or MDX files on disk. Astro content collections work as-is: the indexer reads
+  the files directly rather than going through Astro's collection APIs.
 
 ## In this section
 

@@ -1,472 +1,230 @@
 ---
-name: creating-npm-packages
-description: "Scaffold new TypeScript npm packages with ESM + CJS dual output, pnpm installs, Vite+ (vp) linting/formatting, Bun testing, tsdown bundling, semantic-release publishing, and GitHub Actions CI. Use when asked to create, scaffold, or set up a new npm package."
+name: astro-d1-search
+description: "Add full-text site search to an Astro site using Cloudflare D1 (SQLite FTS5) with the astro-d1-search integration: build-time content indexing, an injected /api/search endpoint, bm25 + recency ranking, and server-rendered search pages. Use when asked to add search to an Astro site, index content into D1, set up FTS5 search, or work with an existing astro-d1-search setup."
 ---
 
-# Creating npm Packages
+# astro-d1-search
 
-Scaffold production-ready TypeScript npm packages with a consistent stack:
-**pnpm** (package manager), **Bun** (test runner), **tsdown** (bundler),
-**Vite+ / `vp`** (lint/format/typecheck + git hooks), **semantic-release**
-(publishing), **GitHub Actions** (CI).
+Site search for Astro backed by Cloudflare D1 (SQLite FTS5). Content is indexed
+at build time by a script; queries are served either by an injected API route or
+directly from server-rendered pages.
 
-## Workflow
+Requires the `@astrojs/cloudflare` adapter. The site itself can stay
+`output: 'static'` — only the search endpoint is server-rendered.
 
-1. Create the project directory and initialise git
-2. Generate all config files using the templates below
-3. Replace placeholder values (`PACKAGE_NAME`, `PACKAGE_DESCRIPTION`, `GITHUB_OWNER`, `GITHUB_REPO`, `CURRENT_YEAR`) with user-provided values
-4. Write initial source code in `src/index.ts` and a starter test in `src/index.test.ts`
-5. Run `pnpm install` (the `prepare` script runs `vp config`, which installs the pre-commit hook)
-6. Run `pnpm run build` to verify the setup works
-7. Run `pnpm run test` to verify tests pass
-8. Run `pnpm run check` to verify lint/format/typecheck passes
+## Architecture
 
-## Project Structure
+Three parts, wired together by one shared options object:
 
-```text
-.
-├── .github/
-│   └── workflows/
-│       ├── build-test.yml
-│       ├── release.yml
-│       └── security.yml
-├── src/
-│   ├── index.ts
-│   └── index.test.ts
-├── .gitignore
-├── CHANGELOG.md
-├── LICENSE
-├── package.json
-├── README.md
-├── release.config.mjs
-├── tsconfig.json
-└── vite.config.ts
-```
+| Part        | Where                                             | Job                                                                                             |
+| ----------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Integration | `astro.config.mjs`                                | Injects `/api/search`, serves config to it via a Vite virtual module, validates wrangler config |
+| Indexer     | `scripts/build-search-index.ts`                   | Parses markdown, emits SQL, pushes via `wrangler d1 execute`                                    |
+| Query layer | `/api/search` route, or `searchIndex()` in a page | Runs the FTS5 query and ranks results                                                           |
 
-`vp config` also generates a `.vite-hooks/` directory (pre-commit hook running
-`vp staged`) and sets `core.hooksPath` — the generated `_/` shim dir ignores
-itself; commit `.vite-hooks/pre-commit`.
+The options object **must** live in its own module (conventionally
+`search.config.ts` at the project root) so all three import the same one. If the
+integration and the indexer disagree, pages get ranked differently from the
+endpoint.
 
-## File Templates
+## Setup workflow
 
-### package.json
+1. `pnpm add astro-d1-search` (plus `@astrojs/cloudflare` and `wrangler` if absent)
+2. `wrangler d1 create <name>` — note the returned `database_id`
+3. Add the `[[d1_databases]]` binding to `wrangler.toml` / `wrangler.jsonc`
+4. Write `search.config.ts`
+5. Add the integration to `astro.config.mjs`, with `platformProxy: { enabled: true }` on the adapter
+6. Write `scripts/build-search-index.ts` and add the `search:index` / `search:push` scripts
+7. Run `pnpm search:index`, then `pnpm dev`, then hit `/api/search?q=test`
+8. Add the index push to CI, **after** the deploy step
 
-```json
-{
-  "name": "PACKAGE_NAME",
-  "version": "0.0.0",
-  "description": "PACKAGE_DESCRIPTION",
-  "license": "ISC",
-  "type": "module",
-  "files": ["dist"],
-  "author": {
-    "name": "Zander Martineau",
-    "email": "zander@zander.wtf",
-    "url": "https://zander.wtf"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/GITHUB_OWNER/GITHUB_REPO.git"
-  },
-  "homepage": "https://github.com/GITHUB_OWNER/GITHUB_REPO",
-  "bugs": {
-    "url": "https://github.com/GITHUB_OWNER/GITHUB_REPO/issues"
-  },
-  "main": "./dist/index.cjs",
-  "types": "./dist/index.d.cts",
-  "exports": {
-    ".": {
-      "import": {
-        "types": "./dist/index.d.mts",
-        "default": "./dist/index.mjs"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
-      }
-    }
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "engines": {
-    "node": ">=20.19.0"
-  },
-  "packageManager": "pnpm@11.10.0",
-  "scripts": {
-    "build": "tsdown src/index.ts --format cjs,esm --target es2020 --dts --sourcemap --clean",
-    "check": "vp check --fix",
-    "dev": "tsdown src/index.ts --format cjs,esm --target es2020 --dts --sourcemap --watch",
-    "prepare": "vp config",
-    "release": "semantic-release",
-    "test": "bun test"
-  },
-  "devDependencies": {
-    "@semantic-release/changelog": "^6.0.3",
-    "@semantic-release/git": "^10.0.1",
-    "@semantic-release/github": "^11.0.0",
-    "@types/bun": "^1.3.10",
-    "@types/node": "^25.4.0",
-    "semantic-release": "^25.0.3",
-    "tsdown": "^0.21.2",
-    "typescript": "^5.9.3",
-    "vite-plus": "^0.2.2"
-  }
-}
-```
+There is no migration step — the indexer prepends
+`CREATE VIRTUAL TABLE IF NOT EXISTS` to every push.
 
-Key conventions:
+## Files to create
 
-- Always set `"type": "module"` for ESM-first
-- `exports` map with per-condition `types`: tsdown emits `index.mjs` /
-  `index.cjs` with matching `index.d.mts` / `index.d.cts` — never point at
-  `index.js` / `index.d.ts`, those files don't exist
-- `"files": ["dist"]` to publish only built output
-- `"publishConfig": { "access": "public" }` for scoped packages
-- Use `tsdown` (not tsup) for bundling
-
-### vite.config.ts
-
-Vite+ tooling config: pre-commit staged checks, formatter, and type-aware
-linting.
+### `search.config.ts`
 
 ```ts
-import { defineConfig } from "vite-plus";
+import type { D1SearchOptions } from "astro-d1-search";
 
-export default defineConfig({
-  staged: {
-    "*": "vp check --fix",
-  },
-  fmt: {},
-  lint: {
-    jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
-    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
-    options: { typeAware: true, typeCheck: true },
-  },
-});
-```
-
-### release.config.mjs
-
-```js
-export default {
-  branches: ["main"],
-  plugins: [
-    "@semantic-release/commit-analyzer",
-    "@semantic-release/release-notes-generator",
-    "@semantic-release/changelog",
-    "@semantic-release/npm",
-    [
-      "@semantic-release/git",
-      {
-        assets: ["package.json", "CHANGELOG.md"],
-        message: "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}",
-      },
-    ],
-    [
-      "@semantic-release/github",
-      {
-        failComment: false,
-        failTitle: false,
-      },
-    ],
+const searchConfig: D1SearchOptions = {
+  database: "my-site-search",
+  binding: "SEARCH_DB",
+  // Set `site` only when several sites share one database
+  sources: [
+    { dir: "src/content/blog", type: "blog", url: "/blog/:slug" },
+    { dir: "src/content/notes", type: "note", url: "/notes/:slug" },
+    // No :slug — every doc in this source maps to the same page
+    { dir: "src/content/worklog", type: "worklog", url: "/worklog" },
+    { files: ["src/pages/about.mdx"], type: "page", url: "/:slug" },
   ],
 };
+
+export default searchConfig;
 ```
 
-Create a `CHANGELOG.md` stub (`# Changelog` heading + one line saying notes are
-generated by semantic-release); releases prepend notes to it.
+Map one source per content collection, plus one `files` source for standalone
+pages. `type` values are arbitrary strings and become the endpoint's `type`
+allowlist.
 
-### tsconfig.json
+### `astro.config.mjs`
 
-```json
-{
-  "compilerOptions": {
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "target": "es2022",
-    "allowJs": true,
-    "resolveJsonModule": true,
-    "moduleDetection": "force",
-    "types": ["bun"],
-    "isolatedModules": true,
-    "verbatimModuleSyntax": true,
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "module": "NodeNext",
-    "outDir": "dist",
-    "rootDir": "src",
-    "sourceMap": true,
-    "declaration": true
-  },
-  "include": ["src/**/*.ts", "src/**/*.d.ts"]
-}
-```
+```js
+import cloudflare from "@astrojs/cloudflare";
+import { defineConfig } from "astro/config";
+import d1Search from "astro-d1-search";
+import searchConfig from "./search.config.ts";
 
-`"types": ["bun"]` makes `bun:test` imports resolve for the type-aware `vp
-check`.
-
-### .github/workflows/build-test.yml
-
-```yaml
-name: Build and Test
-
-on:
-  pull_request:
-  push:
-    branches:
-      - main
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  ci:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "lts/*"
-          cache: "pnpm"
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Check
-        run: pnpm run check
-
-      - name: Build
-        run: pnpm run build
-
-      - name: Run Tests
-        run: pnpm run test
-```
-
-### .github/workflows/release.yml
-
-```yaml
-name: NPM Release
-
-on:
-  workflow_dispatch:
-
-concurrency: ${{ github.workflow }}-${{ github.ref }}
-
-jobs:
-  release:
-    name: Release to NPM
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # semantic-release needs full history
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "lts/*"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
-      - run: pnpm exec semantic-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-```
-
-### .github/workflows/security.yml
-
-```yaml
-name: Security
-
-on:
-  push:
-    branches: ["**"]
-
-jobs:
-  safe-chain:
-    name: Aikido safe-chain
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "latest"
-          cache: "pnpm"
-      - name: Install safe-chain
-        run: curl -fsSL https://github.com/AikidoSec/safe-chain/releases/latest/download/install-safe-chain.sh | sh -s -- --ci
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-```
-
-### .gitignore
-
-```
-node_modules/
-
-# Logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Environment variables
-.env
-.env.*
-!.env.example
-
-# Build output and caches
-dist/
-build/
-coverage/
-.cache/
-.turbo/
-.vite/
-*.tsbuildinfo
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Editor/IDE files
-.idea/
-.vscode/
-*.swp
-*.swo
-```
-
-### LICENSE (ISC)
-
-```
-ISC License
-
-Copyright (c) CURRENT_YEAR Zander Martineau
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-```
-
-### src/index.ts (starter)
-
-Write the actual package implementation here. If no specific functionality is requested, use this minimal starter:
-
-```ts
-export interface HelloOptions {
-  punctuation?: string;
-}
-
-export function hello(name = "world", { punctuation = "!" }: HelloOptions = {}): string {
-  return `Hello, ${name}${punctuation}`;
-}
-```
-
-### src/index.test.ts (starter)
-
-```ts
-import { describe, expect, test } from "bun:test";
-
-import { hello } from "./index.js";
-
-describe("hello", () => {
-  test("returns a greeting with the provided name", () => {
-    expect(hello("Bun")).toBe("Hello, Bun!");
-  });
+export default defineConfig({
+  output: "static",
+  adapter: cloudflare({ platformProxy: { enabled: true } }),
+  integrations: [d1Search(searchConfig)],
 });
 ```
 
-## Conventions
+`platformProxy` is required for local dev — it exposes the local D1 binding to
+`astro dev` through `Astro.locals.runtime.env`.
 
-- **Package manager**: pnpm for installing and running scripts
-- **Bundler**: tsdown (ESM + CJS dual output: `.mjs` / `.cjs` with `.d.mts` / `.d.cts` types)
-- **Linting/formatting/typechecking**: Vite+ `vp check --fix` (not ESLint/Prettier/Biome), configured in `vite.config.ts`
-- **Git hooks**: `vp config` (via the `prepare` script) installs a pre-commit hook running `vp staged`
-- **Testing**: `bun:test` (not Jest or Vitest)
-- **Releasing**: semantic-release with conventional commits, changelog written to `CHANGELOG.md`
-- **Target**: ES2020 for broad compatibility, Node.js ≥ 20.19.0
-- **Strict TypeScript**: `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`
-- **Imports**: Always use `.js` extension in relative imports (required by `verbatimModuleSyntax` + NodeNext)
+### `scripts/build-search-index.ts`
 
-## Release Conventions
+```ts
+import { runCli } from "astro-d1-search/indexer";
+import searchConfig from "../search.config";
 
-Releases run from the manually-triggered `NPM Release` workflow (Actions → Run
-workflow). Version bumps are determined by conventional commit messages:
+runCli(searchConfig);
+```
 
-- `fix:` → patch release
-- `feat:` → minor release
-- `feat!:` or `BREAKING CHANGE:` in footer → major release
-
-The release job requires two repository secrets:
-
-- `NPM_TOKEN` — npm publish token
-- `GITHUB_TOKEN` — automatically provided by GitHub Actions
-
-semantic-release commits the version bump and `CHANGELOG.md` back to `main`
-with `[skip ci]` — never hand-edit `version` in `package.json`.
-
-## Multiple Entrypoints
-
-If the package needs multiple entrypoints, update both the build command and the `exports` map:
+### `package.json`
 
 ```json
 {
-  "exports": {
-    ".": {
-      "import": { "types": "./dist/index.d.mts", "default": "./dist/index.mjs" },
-      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
-    },
-    "./utils": {
-      "import": { "types": "./dist/utils.d.mts", "default": "./dist/utils.mjs" },
-      "require": { "types": "./dist/utils.d.cts", "default": "./dist/utils.cjs" }
-    }
-  },
   "scripts": {
-    "build": "tsdown src/index.ts src/utils.ts --format cjs,esm --target es2020 --dts --sourcemap --clean"
+    "search:index": "tsx scripts/build-search-index.ts",
+    "search:push": "tsx scripts/build-search-index.ts --target=remote"
   }
 }
 ```
 
-## Adding Runtime Dependencies
+Also add `search-index.sql` to `.gitignore` — it's a build artifact.
 
-When the package needs runtime dependencies, add them to `dependencies` (not `devDependencies`). Only devDependencies should include build tools, types, and test utilities.
+### `wrangler.toml`
 
-## README Template
+```toml
+[[d1_databases]]
+binding = "SEARCH_DB"
+database_name = "my-site-search"
+database_id = "<from wrangler d1 create>"
+```
 
-Generate a README with:
+## Server-rendered search page
 
-1. Package name as heading
-2. One-line description
-3. Install instructions (`pnpm add PACKAGE_NAME` / `npm install PACKAGE_NAME`)
-4. Usage example with import
-5. API documentation for exported functions/types
-6. License footer
+```astro
+---
+export const prerender = false
+
+import { resolveConfig, searchIndex } from 'astro-d1-search/core'
+import searchConfig from '../../search.config'
+
+const config = resolveConfig(searchConfig)
+const query = Astro.url.searchParams.get('q')?.trim() || ''
+
+const results =
+  query.length >= 2
+    ? await searchIndex(Astro.locals.runtime.env.SEARCH_DB, { query, limit: 25 }, config)
+    : []
+---
+
+{
+  results.map((result) => (
+    <article>
+      <a href={result.url}>{result.title}</a>
+      {result.snippet && <p set:html={result.snippet} />}
+    </article>
+  ))
+}
+```
+
+Three things are load-bearing: `prerender = false`, passing the resolved config
+as the third argument (otherwise you silently get `DEFAULT_RANKING`), and
+`set:html` to render the `<mark>` tags.
+
+Pass `type: 'note'` for a section-scoped search page.
+
+## Import from the right entry point
+
+| Entry                     | Use in                                                  | Note                    |
+| ------------------------- | ------------------------------------------------------- | ----------------------- |
+| `astro-d1-search`         | `astro.config.mjs`, build scripts, `.astro` frontmatter | Re-exports everything   |
+| `astro-d1-search/core`    | Runtime code, Worker bundles, shared utils              | No Node built-ins       |
+| `astro-d1-search/indexer` | Build scripts only                                      | Filesystem + `wrangler` |
+
+## Frontmatter the indexer reads
+
+- `title` — **required**; documents without one are silently skipped
+- `subtitle` or `description` — the `description` column
+- `tags` — array, joined with spaces
+- `date` or `modified` — truncated to `YYYY-MM-DD`, drives the recency boost
+- `emoji` — returned with results
+- `slug` — overrides the filename-derived slug
+
+Slug resolution matches Astro: frontmatter `slug`, else the filename, else the
+directory name for `<dir>/index.md`.
+
+## Options quick reference
+
+| Option                                      | Default                                              | Note                                              |
+| ------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------- |
+| `database`                                  | required                                             | `wrangler d1 create <name>`                       |
+| `binding`                                   | `'SEARCH_DB'`                                        | Must match wrangler config                        |
+| `site`                                      | `''`                                                 | Set to scope index pushes when sharing a database |
+| `sources`                                   | required                                             | Needs `dir` or `files` per entry                  |
+| `apiRoute`                                  | `'/api/search'`                                      | `false` disables injection                        |
+| `cors`                                      | `true`                                               | `Access-Control-Allow-Origin: *`                  |
+| `cacheMaxAge`                               | `300`                                                | Seconds; also the edge cache lifetime             |
+| `maxLimit` / `maxOffset` / `maxQueryLength` | `25` / `200` / `100`                                 | Validation caps                                   |
+| `weights`                                   | `{ title: 10, description: 5, content: 1, tags: 3 }` | bm25 per column; partials merge                   |
+| `recency`                                   | `{ boost: 0.35, windowDays: 1095 }`                  | `boost: 0` disables                               |
+| `maxTerms`                                  | `8`                                                  | Terms taken from a query                          |
+| `snippetTokens`                             | `24`                                                 | Snippet length                                    |
+| `maxContentLength`                          | `8000`                                               | Characters kept per document                      |
+
+Ranking is computed at query time, so changing `weights` or `recency` takes
+effect immediately — no reindex needed.
+
+## CI
+
+Deploy first, push the index second, so newly-indexed pages already exist:
+
+```yaml
+- run: pnpm build
+- run: npx wrangler pages deploy dist --project-name=my-site
+- run: pnpm search:push
+  env:
+    CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+```
+
+The API token needs **Account → D1 → Edit** on top of the deploy scope.
+
+## Troubleshooting
+
+| Symptom                              | Cause                                                                       |
+| ------------------------------------ | --------------------------------------------------------------------------- |
+| `500`, "D1 binding … not found"      | Binding missing from wrangler config, or `platformProxy` not enabled in dev |
+| Endpoint returns `[]` for everything | Index never pushed — run `pnpm search:index`                                |
+| One page missing from results        | Missing `title` in its frontmatter                                          |
+| Results link to 404s                 | Index pushed before the deploy, or a wrong `url` pattern in a source        |
+| `400 Invalid type`                   | The `type` param isn't one of the `type` values in `sources`                |
+| Wrangler permission error on push    | Token lacks D1 Edit                                                         |
+
+## Constraints
+
+- Every push is a full rebuild (delete-all, insert-all); the index is briefly
+  empty mid-push.
+- `tokenize = 'porter unicode61'` is English-only stemming. Multilingual content
+  needs a forked `SCHEMA_SQL` and a table drop, since the tokenizer is fixed at
+  creation.
+- The endpoint is open and CORS-`*` by default. That's intended for public
+  content sites; use `apiRoute: false` or an access policy otherwise.
+- FTS5 has no cheap total count — build next/previous paging, not "N of M".

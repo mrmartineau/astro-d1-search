@@ -1,0 +1,164 @@
+---
+layout: ../../layouts/Layout.astro
+title: Indexing content
+order: 2
+description: How sources map files to URLs, which frontmatter is read, and what the markdown stripper keeps.
+---
+
+The indexer walks your `sources`, parses frontmatter, flattens the markdown body to plain text, and
+writes one row per document into the FTS5 table.
+
+## Sources
+
+A source is a set of files plus the `type` and URL pattern to store with them.
+
+```ts
+{ dir: 'src/content/blog', type: 'blog', url: '/blog/:slug' }
+```
+
+| Field      | Purpose                                                                           |
+| ---------- | --------------------------------------------------------------------------------- |
+| `dir`      | Directory scanned recursively for `.md` / `.mdx` files                            |
+| `files`    | Explicit file list, as an alternative to `dir`                                    |
+| `type`     | The `type` value stored with every document from this source. Any string you like |
+| `url`      | URL pattern; `:slug` is substituted per document                                  |
+| `skipDirs` | Directory names skipped while scanning. Default: `['Templates']`                  |
+
+Every source needs either `dir` or `files` — the integration throws at startup if one has neither.
+
+### Directories
+
+```ts
+{ dir: 'src/content/notes', type: 'note', url: '/notes/:slug' }
+```
+
+Scanning is recursive, and both `.md` and `.mdx` are picked up. Any directory whose name is in
+`skipDirs` is skipped entirely, subtree and all — useful for a `Templates` or `drafts` folder living
+inside a collection.
+
+### Explicit files
+
+Standalone pages don't live in a collection, so list them:
+
+```ts
+{
+  files: [
+    'src/pages/about.mdx',
+    'src/pages/colophon.md',
+    'src/pages/uses.md',
+  ],
+  type: 'page',
+  url: '/:slug',
+}
+```
+
+### One page, many documents
+
+A pattern without `:slug` maps every document in that source to the same URL. Handy for a changelog
+or worklog where all entries render on one page:
+
+```ts
+{ dir: 'src/content/worklog', type: 'worklog', url: '/worklog' }
+```
+
+Each entry stays individually searchable; they all just link to `/worklog`.
+
+## Slugs
+
+`:slug` resolves the same way Astro resolves it:
+
+| File                                        | Slug          |
+| ------------------------------------------- | ------------- |
+| `blog/hello-world.md`                       | `hello-world` |
+| `blog/2024-hello/index.md`                  | `2024-hello`  |
+| any file with `slug: custom` in frontmatter | `custom`      |
+
+So a post at `src/content/blog/2024-hello/index.md` with `slug: hello-world` in its frontmatter is
+indexed at `/blog/hello-world`, matching what Astro renders.
+
+## Frontmatter
+
+| Key                         | Column        | Notes                                               |
+| --------------------------- | ------------- | --------------------------------------------------- |
+| `title`                     | `title`       | **Required** — documents without one are skipped    |
+| `subtitle` or `description` | `description` | `subtitle` wins if both are present                 |
+| `tags`                      | `tags`        | Array; joined with spaces into one searchable field |
+| `date` or `modified`        | `date`        | `Date` or string; truncated to `YYYY-MM-DD`         |
+| `emoji`                     | `emoji`       | Stored unindexed, returned with results             |
+| `slug`                      | —             | Overrides the filename-derived slug                 |
+
+Anything else in your frontmatter is ignored. The `date` column drives the
+[recency boost](/reference/ranking) — undated documents simply get no boost, they aren't penalised.
+
+> A missing `title` is the one thing that silently drops a document. If a page is missing from
+> search, check its frontmatter first.
+
+## What the markdown stripper does
+
+Bodies are flattened to plain text before indexing:
+
+**Kept**
+
+- Body text, obviously
+- **The contents of fenced code blocks**, so code is searchable
+- Link and image _text_ (`[the docs](https://example.com)` becomes `the docs`)
+
+**Stripped**
+
+- Code fences and inline-code backticks (the code inside survives, the punctuation doesn't)
+- Heading markers, bold/italic markers, blockquote markers, horizontal rules
+- Link and image _URLs_
+- HTML and JSX tags — `<Demo>Visible</Demo>` becomes `Visible`
+- MDX `import` / `export` statements
+
+Whitespace is then collapsed to single spaces, so a document becomes one long line of prose.
+
+```ts
+import { markdownToPlainText } from "astro-d1-search";
+
+markdownToPlainText("# Hi\n\nSome **bold** text with `code`.");
+// => 'Hi Some bold text with code.'
+```
+
+Content is truncated at `maxContentLength` (default 8000 characters) per document. That keeps the
+index small; long posts stay findable by their opening, plus their title, description and tags.
+
+## Running the indexer
+
+```sh
+pnpm search:index   # build + push to the local D1 database
+pnpm search:push    # build + push to the remote (production) database
+```
+
+Both write `search-index.sql` to the working directory and then execute it with
+`wrangler d1 execute`. Add a `--dry-run` flag to write the SQL without pushing — useful for
+inspecting exactly what will land in the database:
+
+```sh
+npx tsx scripts/build-search-index.ts --dry-run
+head -30 search-index.sql
+```
+
+The generated file is: the `CREATE VIRTUAL TABLE IF NOT EXISTS` schema, a `DELETE` (scoped to your
+`site` if you set one), then batched multi-row `INSERT` statements — each kept under SQLite's
+maximum statement size.
+
+Add `search-index.sql` to your `.gitignore`; it's a build artifact.
+
+## Programmatic use
+
+If the CLI wrapper doesn't fit your build, the pieces are exported:
+
+```ts
+import { buildIndex, gatherDocs, toSql } from "astro-d1-search/indexer";
+import searchConfig from "./search.config";
+
+// Inspect what would be indexed
+const docs = await gatherDocs(searchConfig);
+
+// Generate the SQL yourself
+const sql = toSql(docs, "my-site.com");
+
+// Or do the whole thing, wrangler push included
+const { count, counts } = await buildIndex(searchConfig, { target: "remote" });
+```

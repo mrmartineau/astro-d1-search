@@ -1,73 +1,67 @@
-# zed-astro-starter
+# astro-d1-search docs
 
-An opinionated [Astro](https://astro.build) starter, ready to deploy to Cloudflare Workers.
-
-## What's included
-
-- **[Astro 7](https://astro.build)** — static output by default
-- **[ZUI](https://github.com/mrmartineau/zui)** — CSS-first UI library (`@mrmartineau/zui`) with Astro component wrappers, design tokens, and a built-in reset/base layer
-- **[Vite+](https://viteplus.dev)** — unified toolchain (`vp`) for formatting, linting, type checking, and testing
-- **[Cloudflare Workers](https://developers.cloudflare.com/workers/)** — via the `@astrojs/cloudflare` adapter, with static assets served from a Worker
-- **GitHub Actions** — deploy on push to `main`, plus an [Aikido safe-chain](https://github.com/AikidoSec/safe-chain) supply-chain scan on every branch
-
-## Project structure
-
-```text
-/
-├── .github/workflows/
-│   ├── deploy.yml          # Build + deploy to Cloudflare on push to main
-│   └── security.yml        # Supply-chain scan on every branch
-├── public/                 # Static assets, copied verbatim
-├── src/
-│   ├── components/
-│   │   ├── Masthead.astro  # Site header with navigation
-│   │   └── Footer.astro    # Copyright + current year
-│   ├── layouts/
-│   │   └── BaseLayout.astro # Wraps every page; ZUI CSS, head slot, masthead, footer
-│   └── pages/
-│       └── index.astro     # Routes map to files in this directory
-├── astro.config.mjs        # Astro + Cloudflare adapter config
-└── wrangler.jsonc          # Cloudflare Worker config
-```
-
-## Layout
-
-Every page wraps itself in `BaseLayout`, which pulls in the ZUI stylesheet and renders the masthead and footer:
-
-```astro
----
-import BaseLayout from '../layouts/BaseLayout.astro'
----
-
-<BaseLayout title="Page title" description="Optional meta description">
-  <link slot="head" rel="preload" href="…" />  <!-- optional extra head content -->
-  <p>Page content</p>
-</BaseLayout>
-```
-
-Styling comes from ZUI: use its components (`@mrmartineau/zui/astro`), design tokens (`--space-*`, `--color-*`, `--step-*`, …), and utility classes rather than hard-coded values. ZUI owns the CSS reset and base layer.
+The documentation site for [`astro-d1-search`](../). Built with [Astro](https://astro.build) and
+[`@mrmartineau/zui-theme`](https://github.com/mrmartineau/zui), deployed to Cloudflare Workers as a
+static site served from Worker assets.
 
 ## Commands
 
-All commands run from the project root:
+Run these from the repo root so pnpm resolves the workspace:
 
-| Command        | Action                                            |
-| :------------- | :------------------------------------------------ |
-| `vp install`   | Install dependencies                              |
-| `pnpm dev`     | Start local dev server at `localhost:4321`        |
-| `pnpm build`   | Build the production site to `./dist/`            |
-| `pnpm preview` | Preview the build locally                         |
-| `pnpm deploy`  | Build and deploy to Cloudflare (needs local auth) |
-| `vp check`     | Format, lint, and type check                      |
-| `vp test`      | Run tests                                         |
+| Command                | Action                                                     |
+| :--------------------- | :--------------------------------------------------------- |
+| `pnpm run docs:dev`    | Dev server                                                 |
+| `pnpm run docs:build`  | Production build to `docs/dist/`                           |
+| `pnpm run docs:deploy` | Build and deploy to Cloudflare (needs local wrangler auth) |
+
+## Structure
+
+```text
+docs/
+├── src/
+│   ├── components/
+│   │   └── SectionCards.astro   # card grid for a section's pages
+│   ├── layouts/
+│   │   └── Layout.astro         # wraps the theme's DocsLayout
+│   ├── pages/
+│   │   ├── guides/              # setup and how-to
+│   │   ├── reference/           # options, endpoint, ranking, exports
+│   │   ├── changelog.astro      # renders the root CHANGELOG.md
+│   │   └── index.astro          # landing page
+│   └── site.config.ts           # title, description, links, version
+├── astro.config.mjs
+└── wrangler.jsonc               # Worker name + asset directory
+```
+
+## Adding a page
+
+Create an `.mdx` file under `src/pages/<section>/` — the sidebar and footer build themselves from
+the file structure, so there's no nav config to update.
+
+```mdx
+---
+layout: ../../layouts/Layout.astro
+title: My page
+description: One-line summary shown under the heading.
+order: 5
+---
+
+## Usage
+
+Standard Markdown. Code blocks are syntax-highlighted automatically.
+```
+
+Frontmatter: `title` (required, used for the sidebar label and `<title>`), `description`, `order`
+(position within the section), and `sectionOrder` on a section's `index.mdx` (position of the whole
+section).
+
+A new top-level folder under `src/pages/` becomes a new sidebar section. If you add one, also add a
+`<SectionCards section="..." />` block to `src/pages/index.astro` so it appears on the landing page.
 
 ## Deployment
 
-Pushing to `main` (or running the _Deploy to Cloudflare_ workflow manually) builds the site and deploys it to Cloudflare Workers with [`cloudflare/wrangler-action`](https://github.com/cloudflare/wrangler-action). Static files are served as Worker assets from `dist/client`.
+`.github/workflows/deploy-docs.yml` deploys on any push to `main` that touches `docs/**`, and can be
+run manually. It needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets.
 
-One-time setup:
-
-1. Add repository secrets (GitHub → Settings → Secrets and variables → Actions):
-   - `CLOUDFLARE_API_TOKEN` — API token with Workers edit permission
-   - `CLOUDFLARE_ACCOUNT_ID` — from the Cloudflare dashboard
-2. If the project was ever connected to Cloudflare's built-in Git integration, disable it so the two deploy paths don't conflict.
+Build output goes to `docs/dist/client` (the Cloudflare adapter splits client/server) and
+`wrangler.jsonc` points there — don't change one without the other.
