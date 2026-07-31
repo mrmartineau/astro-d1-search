@@ -1,6 +1,6 @@
 {
   "name": "astro-d1-search",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Astro integration for site search backed by Cloudflare D1 (SQLite FTS5): build-time indexing, an injected search API endpoint, bm25 + recency ranking",
   "keywords": [
     "astro",
