@@ -1,0 +1,155 @@
+---
+layout: ../../layouts/Layout.astro
+title: Examples
+order: 5
+description: A real site running the package end to end, with links to every file involved.
+---
+
+export const prerender = true; // Keep. Astro scans code fences for a `prerender` export, and the `prerender = false` example below would otherwise make this page server-rendered — a 404 on the assets-only docs Worker.
+
+## zander.wtf
+
+[zander.wtf](https://zander.wtf) is the site this package was extracted from. It indexes five
+content types — blog posts, code notes, projects, worklog entries and standalone pages — into a
+single D1 database, and exposes them through both a site-wide search page and a section-scoped one.
+
+**Try it:**
+
+- [zander.wtf/search](https://zander.wtf/search) — site-wide search, server-rendered, with type
+  filters and an empty state that lists recent content
+- [zander.wtf/notes/search](https://zander.wtf/notes/search) — the same index scoped to
+  `type: 'note'`
+- [`/api/search?q=astro`](https://zander.wtf/api/search?q=astro&limit=5) — the injected endpoint,
+  serving JSON
+
+**Read the source** ([mrmartineau/zander.wtf](https://github.com/mrmartineau/zander.wtf)):
+
+| File                                                                                                                 | What it shows                                                     |
+| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| [`search.config.ts`](https://github.com/mrmartineau/zander.wtf/blob/main/search.config.ts)                           | The shared options object — sources, URL patterns, recency tuning |
+| [`astro.config.mjs`](https://github.com/mrmartineau/zander.wtf/blob/main/astro.config.mjs)                           | Wiring the integration with that config                           |
+| [`scripts/build-search-index.ts`](https://github.com/mrmartineau/zander.wtf/blob/main/scripts/build-search-index.ts) | The three-line indexer CLI wrapper                                |
+| [`src/utils/search.ts`](https://github.com/mrmartineau/zander.wtf/blob/main/src/utils/search.ts)                     | Wrapping `searchIndex()` once to narrow `type` to a union         |
+| [`src/pages/search.astro`](https://github.com/mrmartineau/zander.wtf/blob/main/src/pages/search.astro)               | Site-wide server-rendered search page with type filters           |
+| [`src/pages/notes/search.astro`](https://github.com/mrmartineau/zander.wtf/blob/main/src/pages/notes/search.astro)   | The section-scoped variant, 30 lines                              |
+
+> zander.wtf develops the package as a workspace package rather than installing it from npm, so its
+> imports read `./packages/astro-d1-search/src/...` where yours read `astro-d1-search/...`.
+> Everything else transfers directly.
+
+## What's worth stealing
+
+### One config module, three consumers
+
+`search.config.ts` exports a plain `D1SearchOptions` object and nothing else. The Astro config, the
+index script and the search pages all import it, so ranking weights can't drift between the endpoint
+and the pages:
+
+```ts
+// search.config.ts
+import type { D1SearchOptions } from "astro-d1-search";
+
+const searchConfig: D1SearchOptions = {
+  database: "zander-wtf-search",
+  binding: "SEARCH_DB",
+  site: "zander.wtf",
+  sources: [
+    { dir: "src/content/blog", type: "blog", url: "/blog/:slug" },
+    { dir: "src/content/codenotes", type: "note", url: "/notes/:slug" },
+    { dir: "src/content/projects", type: "project", url: "/projects/:slug" },
+    // Worklog entries all render on the single /worklog page
+    { dir: "src/content/worklog", type: "worklog", url: "/worklog" },
+    {
+      files: [
+        "src/pages/about.mdx",
+        "src/pages/colophon.md",
+        "src/pages/uses.md",
+        "src/pages/feeds.md",
+      ],
+      type: "page",
+      url: "/:slug",
+    },
+  ],
+  recency: {
+    boost: 0.35, // a doc published today gets relevance × 1.35
+    windowDays: 1095, // falling linearly to ×1 at 3 years old
+  },
+};
+
+export default searchConfig;
+```
+
+Note the worklog source: every entry renders on one `/worklog` page, so its `url` has no `:slug`.
+Several documents pointing at the same URL is fine.
+
+### A typed wrapper around `searchIndex()`
+
+`type` is a plain `string` in the package because your types are yours. Sites that want a union
+narrow it once in a helper, then use that everywhere instead of calling `resolveConfig()` per page:
+
+```ts
+// src/utils/search.ts
+import {
+  type SearchResult as CoreSearchResult,
+  searchIndex as coreSearchIndex,
+  type D1Like,
+  resolveConfig,
+  type SearchOptions,
+} from "astro-d1-search/core";
+import searchConfig from "../../search.config";
+
+const config = resolveConfig(searchConfig);
+
+export const SEARCH_TYPES = ["blog", "note", "project", "worklog", "page"] as const;
+export type SearchType = (typeof SEARCH_TYPES)[number];
+export type SearchResult = Omit<CoreSearchResult, "type"> & { type: SearchType };
+
+/** Site-configured search: the package core bound to this site's ranking. */
+export function searchIndex(db: D1Like, options: SearchOptions): Promise<SearchResult[]> {
+  return coreSearchIndex(db, options, config) as Promise<SearchResult[]>;
+}
+```
+
+### Type filters as links, not JavaScript
+
+The site-wide page reads `?type=` alongside `?q=`, validates it against `SEARCH_TYPES`, and renders
+the filters as plain anchors. No client-side JavaScript is involved in search at all:
+
+```astro
+---
+export const prerender = false;
+
+import { SEARCH_TYPES, type SearchResult, type SearchType, searchIndex } from "~/utils/search";
+
+const query = Astro.url.searchParams.get("q")?.trim() || "";
+const typeParam = Astro.url.searchParams.get("type") || "";
+const type = SEARCH_TYPES.includes(typeParam as SearchType) ? (typeParam as SearchType) : undefined;
+
+let results: SearchResult[] = [];
+let searchError = "";
+
+if (query.length >= 2) {
+  try {
+    results = await searchIndex(Astro.locals.runtime.env.SEARCH_DB, { query, limit: 25, type });
+  } catch (error) {
+    console.error("Search error:", error);
+    searchError = `An error occurred while searching for "${query}". Please try again.`;
+  }
+}
+
+const filterUrl = (t?: SearchType) => {
+  const params = new URLSearchParams({ q: query });
+  if (t) params.set("type", t);
+  return `/search?${params.toString()}`;
+};
+---
+```
+
+Two details worth copying: the `try`/`catch` around the query, so a D1 hiccup degrades to a message
+rather than a 500; and the empty state — when there's no query, the page lists recent posts and
+notes instead of showing nothing.
+
+## Using this package?
+
+Open a [pull request](https://github.com/mrmartineau/astro-d1-search/pulls) adding your site to this
+page.

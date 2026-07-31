@@ -209,6 +209,32 @@ Pass `type: 'note'` (or any of your types) for a section-scoped search page.
 
 Set a distinct `site` per project and point them all at the same `database`. Each site's index push replaces only its own rows (`DELETE ... WHERE site = ?`), and each site's endpoint serves its own content. A shared cross-site endpoint is then one Worker away.
 
+## Examples
+
+[**zander.wtf**](https://zander.wtf) is the site this package was extracted from. It indexes five
+content types into one D1 database and searches them without a byte of client-side JavaScript.
+
+- [zander.wtf/search](https://zander.wtf/search) — site-wide search page with type filters
+- [zander.wtf/notes/search](https://zander.wtf/notes/search) — the same index scoped to one type
+- [`/api/search?q=astro`](https://zander.wtf/api/search?q=astro&limit=5) — the injected endpoint
+
+Source ([mrmartineau/zander.wtf](https://github.com/mrmartineau/zander.wtf)):
+
+| File                                                                                                                 | What it shows                                                     |
+| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| [`search.config.ts`](https://github.com/mrmartineau/zander.wtf/blob/main/search.config.ts)                           | The shared options object — sources, URL patterns, recency tuning |
+| [`astro.config.mjs`](https://github.com/mrmartineau/zander.wtf/blob/main/astro.config.mjs)                           | Wiring the integration with that config                           |
+| [`scripts/build-search-index.ts`](https://github.com/mrmartineau/zander.wtf/blob/main/scripts/build-search-index.ts) | The three-line indexer CLI wrapper                                |
+| [`src/utils/search.ts`](https://github.com/mrmartineau/zander.wtf/blob/main/src/utils/search.ts)                     | Wrapping `searchIndex()` once to narrow `type` to a union         |
+| [`src/pages/search.astro`](https://github.com/mrmartineau/zander.wtf/blob/main/src/pages/search.astro)               | Site-wide server-rendered search page                             |
+| [`src/pages/notes/search.astro`](https://github.com/mrmartineau/zander.wtf/blob/main/src/pages/notes/search.astro)   | The section-scoped variant, 30 lines                              |
+
+That site develops the package as a workspace package rather than installing it from npm, so its
+imports read `./packages/astro-d1-search/src/...` where yours read `astro-d1-search/...`.
+
+The docs site's [Examples guide](./docs/src/pages/guides/examples.mdx) walks through what's worth
+copying from it. Using this package? Open a PR adding your site.
+
 ## Constraints
 
 - **Full rebuild per push**: the index is briefly empty (or site-scoped-empty) mid-push. Fine at personal-site scale.
