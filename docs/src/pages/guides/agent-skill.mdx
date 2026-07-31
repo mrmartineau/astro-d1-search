@@ -1,0 +1,46 @@
+---
+layout: ../../layouts/Layout.astro
+title: Agent skill
+order: 6
+description: Install the packaged skill so Claude Code and other coding agents can set this up for you.
+---
+
+The repo ships a [skill](https://github.com/mrmartineau/astro-d1-search/blob/main/SKILL.md) — a
+single file that teaches a coding agent how to use this package: the architecture, the setup order,
+every file it needs to create, which entry point to import from, and the failure modes worth
+recognising.
+
+## Install
+
+```sh
+npx skills add mrmartineau/astro-d1-search
+```
+
+That fetches `SKILL.md` into your project's skills directory. It works with
+[Claude Code](https://claude.com/claude-code) and any other agent that reads the
+[`skills`](https://github.com/vercel-labs/skills) convention.
+
+Then ask for what you want:
+
+> Add site search to this Astro site using astro-d1-search
+
+The agent picks the skill up from its description — no need to name the file.
+
+## What it covers
+
+- The three-part architecture, and why the options object must live in its own module
+- An eight-step setup order, including the parts that only fail later if done out of order
+  (`platformProxy` for local dev, pushing the index _after_ the deploy)
+- Every file to create, with content: `search.config.ts`, the integration wiring, the indexer
+  script, the package scripts, the wrangler binding
+- A server-rendered search page, with the three load-bearing details called out
+- Which of the three entry points to import from, and why it matters in a Worker
+- The frontmatter contract, including the silent ones — an untitled document is skipped, a
+  string `tags` is ignored, a non-ISO `date` disables the recency boost
+- A troubleshooting table mapping symptoms to causes
+
+## Doing it by hand
+
+Nothing in the skill is exclusive to agents — it's a condensed version of these guides. If you're
+setting the package up yourself, [Getting started](/guides/getting-started) is the same ground at a
+readable pace, and the [reference](/reference) section has the full detail.

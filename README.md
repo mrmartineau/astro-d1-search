@@ -13,6 +13,14 @@ Requires the [`@astrojs/cloudflare`](https://docs.astro.build/en/guides/integrat
 
 📖 **Full documentation**: the [`docs/`](./docs) site (`pnpm run docs:dev` to read it locally, `pnpm run docs:deploy` to publish it).
 
+🤖 **Using a coding agent?** Install the packaged skill and ask it to do the setup for you:
+
+```sh
+npx skills add mrmartineau/astro-d1-search
+```
+
+It teaches the agent the architecture, the setup order, every file to create and the failure modes. See [`SKILL.md`](./SKILL.md).
+
 ## Install
 
 ```sh
