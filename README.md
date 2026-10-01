@@ -266,6 +266,14 @@ pnpm run docs:build # build the docs site
 
 See `AGENTS.md` for the full contributor and agent guide.
 
+## More Astro packages
+
+Other Astro tools I have made:
+
+- [astro-git-dates](https://github.com/mrmartineau/astro-git-dates): set content collection dates from git history
+- [zed-astro-starter](https://github.com/mrmartineau/zed-astro-starter): an opinionated Astro starter, ready to deploy to Cloudflare Workers
+- [ZUI](https://github.com/mrmartineau/zui): a CSS-first UI library with Astro (and React, Solid, Svelte, Vue) components
+
 ## License
 
 [MIT](https://choosealicense.com/licenses/mit/) © [Zander Martineau](https://zander.wtf)
