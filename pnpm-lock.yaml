@@ -68,10 +68,10 @@ importers:
         version: 1.0.0(typescript@5.9.3)
       '@mrmartineau/zui':
         specifier: ^1.6.1
-        version: 1.6.2(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))(typescript@5.9.3)
+        version: 1.7.0(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))(typescript@5.9.3)
       '@mrmartineau/zui-theme':
         specifier: ^1.1.2
-        version: 1.1.2(@mrmartineau/zui@1.6.2(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))(typescript@5.9.3))(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))
+        version: 1.1.2(@mrmartineau/zui@1.7.0(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))(typescript@5.9.3))(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))
       astro:
         specifier: ^7.0.6
         version: 7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39)
@@ -909,8 +909,8 @@ packages:
       '@mrmartineau/zui': ^1.0.0
       astro: ^6.0.0
 
-  '@mrmartineau/zui@1.6.2':
-    resolution: {integrity: sha512-muBO9d1UhNPmfbIOUy7GUBDuHGvoJ0+sItZwRSib/tVX8qcZZREcGvOAzfxQldRdndDHVJsTieRzLUZYS5t+kA==}
+  '@mrmartineau/zui@1.7.0':
+    resolution: {integrity: sha512-F2bTm4PxvN7RhzS88lQIn60GBuHh/f1EiJz7sV+XeiCLTDwzdbpPqlvmPQy/4cd/evXooE2d/vKv7HfV/LaAYA==}
     hasBin: true
     peerDependencies:
       astro: ^6.0.0 || ^7.0.0
@@ -4863,12 +4863,12 @@ snapshots:
     dependencies:
       typescript: 5.9.3
 
-  '@mrmartineau/zui-theme@1.1.2(@mrmartineau/zui@1.6.2(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))(typescript@5.9.3))(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))':
+  '@mrmartineau/zui-theme@1.1.2(@mrmartineau/zui@1.7.0(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))(typescript@5.9.3))(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))':
     dependencies:
-      '@mrmartineau/zui': 1.6.2(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))(typescript@5.9.3)
+      '@mrmartineau/zui': 1.7.0(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))(typescript@5.9.3)
       astro: 7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39)
 
-  '@mrmartineau/zui@1.6.2(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))(typescript@5.9.3)':
+  '@mrmartineau/zui@1.7.0(astro@7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39))(typescript@5.9.3)':
     dependencies:
       cva: 1.0.0-beta.4(typescript@5.9.3)
     optionalDependencies:
