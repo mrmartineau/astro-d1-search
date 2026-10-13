@@ -1,5 +1,7 @@
 # astro-d1-search — agent & contributor guide
 
+`CLAUDE.md` is a symlink to this file — edit one, both change.
+
 Site search for Astro backed by Cloudflare D1 (SQLite FTS5). The repo is a pnpm
 monorepo with two parts:
 
@@ -27,8 +29,18 @@ pnpm run docs:build       # build docs site
 pnpm run docs:deploy      # build + wrangler deploy (needs Cloudflare auth)
 ```
 
+Single test file / single case:
+
+```sh
+bun test src/core.test.ts             # one file
+bun test -t "quotes every term"       # one case, by name pattern
+```
+
 Before committing: `pnpm run check && pnpm run build && pnpm run test`, and
 `pnpm run docs:build` if you touched `docs/`.
+
+Node: root package needs `>=20.19.0`, `docs/` needs `>=22.12.0` — use the
+higher one.
 
 ## The package (`src/`)
 
@@ -42,6 +54,25 @@ Six modules, three of them public entry points:
 | `config.ts`   | (internal)                  | Options types and `resolveConfig`                                 |
 | `markdown.ts` | (internal)                  | `markdownToPlainText`, `sqlEscape`                                |
 | `route.ts`    | (built to `dist/route.mjs`) | The injected API endpoint                                         |
+
+Two flows, and nothing crosses between them at runtime:
+
+- **Build time (Node).** `indexer.ts` walks each `source.dir`, parses
+  frontmatter with `@11ty/gray-matter`, flattens the body via
+  `markdownToPlainText`, and emits one SQL file — `SCHEMA_SQL` (a
+  `CREATE VIRTUAL TABLE IF NOT EXISTS`, so no migration step), a delete of the
+  site's existing rows, then batched INSERTs kept under
+  `MAX_STATEMENT_BYTES`. `buildIndex` shells out to
+  `npx wrangler d1 execute … --file=` to push it. `runCli` reads
+  `--target=remote` / `--dry-run` from argv; consumers call it from their own
+  script.
+- **Request time (Worker).** The integration injects `route.ts` at
+  `config.apiRoute`. It validates `q`/`limit`/`offset`/`type`, pulls the D1
+  binding off `locals.runtime.env[config.binding]`, and calls
+  `searchIndex` from `core.ts`, which builds the bm25 + recency SQL.
+
+`resolveConfig` in `config.ts` is the single source of defaults for both — every
+limit, weight and recency number lives there, so change a default in one place.
 
 Design rules worth preserving:
 
@@ -61,7 +92,11 @@ Design rules worth preserving:
   `deps.neverBundle` in `tsdown.config.ts` — the consuming project's Vite
   resolves it, not ours.
 
-Tests live beside the source as `src/*.test.ts` (Bun test). `pnpm run build`
+Tests live beside the source as `src/*.test.ts` (Bun test) and stub D1 with a
+fake `prepare`/`bind`/`all`, asserting on the SQL text and bound params — no
+real database involved. **The docs site does not consume the integration**, so
+there is nothing in this repo that exercises the package end to end; verifying
+real behaviour means wiring it into a separate Astro project. `pnpm run build`
 emits ESM (`.mjs`) plus `.d.mts` types into `dist/`, which is the only published
 directory (`files` field). Releases prepend notes to `CHANGELOG.md`; the docs
 site renders it at `/changelog`.
@@ -71,8 +106,9 @@ site renders it at `/changelog`.
 Astro + `@mrmartineau/zui-theme`. Static output, served as assets from a
 Cloudflare Worker (`astro-d1-search-docs`).
 
-Two sections: `guides/` (setup, indexing, search pages, deploying) and
-`reference/` (configuration, API endpoint, ranking, exports).
+Two sections: `guides/` (getting started, indexing content, search pages,
+deploying, agent skill, examples) and `reference/` (configuration, API
+endpoint, ranking, exports), plus a top-level `changelog.astro`.
 
 ### Writing documentation
 
@@ -151,7 +187,7 @@ CI installs with `--frozen-lockfile`: if you change any `package.json`, run
 
 ## The agent skill
 
-`SKILL.md` teaches agents how to _use_ the package — set it up in an Astro
+`SKILL.md` (repo root) teaches agents how to _use_ the package — set it up in an Astro
 project, wire the config, troubleshoot. It's installable with
 [`npx skills`](https://github.com/vercel-labs/skills):
 
