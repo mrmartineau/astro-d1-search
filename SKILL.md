@@ -16,11 +16,11 @@ Requires the `@astrojs/cloudflare` adapter. The site itself can stay
 
 Three parts, wired together by one shared options object:
 
-| Part        | Where                                             | Job                                                                                             |
-| ----------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Integration | `astro.config.mjs`                                | Injects `/api/search`, serves config to it via a Vite virtual module, validates wrangler config |
-| Indexer     | `scripts/build-search-index.ts`                   | Parses markdown, emits SQL, pushes via `wrangler d1 execute`                                    |
-| Query layer | `/api/search` route, or `searchIndex()` in a page | Runs the FTS5 query and ranks results                                                           |
+| Part        | Where                                             | Job                                                                                                       |
+| ----------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Integration | `astro.config.mjs`                                | Injects `/api/search`, serves config to it via a Vite virtual module, warns if wrangler config is missing |
+| Indexer     | `scripts/build-search-index.ts`                   | Parses markdown, emits SQL, pushes via `wrangler d1 execute`                                              |
+| Query layer | `/api/search` route, or `searchIndex()` in a page | Runs the FTS5 query and ranks results                                                                     |
 
 The options object **must** live in its own module (conventionally
 `search.config.ts` at the project root) so all three import the same one. If the
@@ -65,7 +65,7 @@ export default searchConfig;
 ```
 
 Map one source per content collection, plus one `files` source for standalone
-pages. `type` values are arbitrary strings and become the endpoint's `type`
+pages. Only `.md` and `.mdx` files are indexed. `type` values are arbitrary strings and become the endpoint's `type`
 allowlist.
 
 ### `astro.config.mjs`
@@ -228,9 +228,10 @@ The API token needs **Account → D1 → Edit** on top of the deploy scope.
 | Endpoint returns `[]` for everything   | Index never pushed — run `pnpm search:index`                                |
 | One page missing from results          | Missing `title` in its frontmatter                                          |
 | A whole directory missing              | Its name is in `skipDirs` (`Templates` by default)                          |
+| New content missing right after a push | Edge cache — responses live for `cacheMaxAge` (300s by default)             |
 | Results link to 404s                   | Index pushed before the deploy, or a wrong `url` pattern in a source        |
 | `400 Invalid type`                     | The `type` param isn't one of the `type` values in `sources`                |
-| `400 Invalid limit` / `Invalid offset` | Non-integer, negative, or `offset` above `maxOffset`                        |
+| `400 Invalid limit` / `Invalid offset` | `limit` below 1, a non-integer, or `offset` negative or above `maxOffset`   |
 | `400 Query too long`                   | `q` longer than `maxQueryLength` (100 by default)                           |
 | `limit=100` silently returns 25        | Not an error — `limit` is clamped to `maxLimit`                             |
 | Tags never match                       | `tags` is a string in that file's frontmatter; it must be an array          |
