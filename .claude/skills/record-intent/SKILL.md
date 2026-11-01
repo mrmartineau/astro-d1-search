@@ -23,8 +23,8 @@ Goal: the next agent gets the decision and the reasoning, not just the code.
    If it can't be checked yet, say so under the rule.
 4. **Run `bun test`.** A new property that passes first time on a rule you just
    wrote: confirm it can fail. Back up the file outside the repo
-   (`bak=$(mktemp)`; `cp <file> "$bak"`), break it, run the test, then
-   `cp "$bak" <file>` and `rm "$bak"`. Don't use `git checkout` to revert; it
+   (`f=path/to/file`; `bak=$(mktemp)`; `cp "$f" "$bak"`), break it, run the test, then
+   `cp "$bak" "$f"` and `rm "$bak"`. Don't use `git checkout` to revert; it
    discards other uncommitted work in the file.
 5. **Update `intent/README.md`** table if you added a file.
 6. Summarise in 3 lines: rules added/changed, checks added, open questions.
