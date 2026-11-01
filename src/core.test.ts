@@ -41,6 +41,12 @@ describe("toFtsQuery", () => {
     expect(toFtsQuery("\u0000")).toBe('""');
   });
 
+  test("drops punctuation-only terms so the prefix stays on the last real term", () => {
+    expect(toFtsQuery("gri !")).toBe('"gri"*');
+    expect(toFtsQuery("css && grid")).toBe('"css" "grid"*');
+    expect(toFtsQuery("! -- &&")).toBe('""');
+  });
+
   test("caps the number of terms", () => {
     expect(toFtsQuery("a b c d e f g h i j", 3)).toBe('"a" "b" "c"*');
   });
