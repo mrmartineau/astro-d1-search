@@ -49,9 +49,17 @@ export const DEFAULT_RANKING: RankingConfig = {
  * Convert raw user input into a safe FTS5 MATCH expression. Every term is
  * double-quoted (neutralises AND/OR/NEAR/-/* operators); the last term gets
  * a `*` suffix for prefix matching, giving search-as-you-type behaviour.
+ * Control characters are treated as separators too: FTS5 reads a NUL as the
+ * end of the query string, which leaves the quoted term unterminated and
+ * makes D1 throw (found by the search oracle, intent/search.md R5).
  */
 export function toFtsQuery(input: string, maxTerms = 8): string {
-  const terms = input.replace(/["'`]/g, " ").split(/\s+/).filter(Boolean).slice(0, maxTerms);
+  const terms = input
+    // oxlint-disable-next-line no-control-regex -- stripping them is the point
+    .replace(/["'`\p{Cc}]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, maxTerms);
   if (terms.length === 0) return '""';
   return terms.map((term, i) => (i === terms.length - 1 ? `"${term}"*` : `"${term}"`)).join(" ");
 }
