@@ -14,6 +14,20 @@ Root `package.json` is the package itself; `docs` is a private workspace package
 `pnpm-workspace.yaml` wires them together (it also holds the vite catalog and the
 dependency build allowlist — don't remove those).
 
+## Intent first
+
+`intent/` holds what the package promises and why (search behaviour R1-R5,
+runtime budgets B1-B3, decision records). Read the relevant file before
+changing `src/`. Property-based oracles in `src/search.oracle.test.ts` check
+the search rules against real SQLite FTS5; a failure prints a shrunk
+counterexample.
+
+If a change breaks a rule: fix the change, or edit the rule in `intent/` first
+and say why. Don't loosen an oracle to make it pass. When a session settles
+something new, run the `record-intent` skill. The `intent-reviewer` agent
+checks a diff against `intent/`. A Stop hook runs `bun test` when `src/` or
+`intent/` changed.
+
 ## Commands
 
 Run everything from the repo root. pnpm for installs, Bun as the test runner.
