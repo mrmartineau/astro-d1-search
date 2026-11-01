@@ -5,8 +5,13 @@ import { join } from "node:path";
 
 const read = (file: string) => readFileSync(join(import.meta.dir, file), "utf-8");
 
+/** Static imports/re-exports, dynamic `import()` and `require()`. */
 const importsOf = (source: string) =>
-  [...source.matchAll(/^\s*(?:import|export)[^;]*?from\s+["']([^"']+)["']/gms)].map((m) => m[1]!);
+  [
+    ...source.matchAll(/^\s*(?:import|export)[^;]*?from\s+["']([^"']+)["']/gms),
+    ...source.matchAll(/^\s*import\s+["']([^"']+)["']/gm),
+    ...source.matchAll(/\b(?:import|require)\s*\(\s*["'`]([^"'`]+)["'`]/g),
+  ].map((m) => m[1]!);
 
 describe("intent/budgets.md", () => {
   const ALLOWED = new Set(["./config", "./core", "astro", "virtual:astro-d1-search-config"]);

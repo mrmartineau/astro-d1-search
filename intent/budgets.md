@@ -7,7 +7,8 @@ import only each other, `astro` types and the virtual config module.
 
 - **Why:** a Node built-in in the Worker bundle fails at deploy or at first
   request, not at build.
-- **Check:** `src/intent.test.ts` scans their imports.
+- **Check:** `src/intent.test.ts` scans static imports, re-exports, dynamic
+  `import()` and `require()`.
 
 ## B2. No `@cloudflare/workers-types` dependency
 
@@ -20,7 +21,9 @@ D1 is typed structurally (`D1Like`).
 
 Query, type, limit and offset are always bound parameters.
 
-- **Check:** `core.test.ts` ("binds the match expression…") plus oracle R5.
+- **Check:** bindings: `core.test.ts` ("binds the match expression…", "appends
+  a bound type filter…"). Interpolation: only by types; `RankingConfig` fields
+  are numbers, and `resolveConfig` builds them. Not checked at runtime.
 
 ## Not yet budgeted
 

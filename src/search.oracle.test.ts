@@ -43,7 +43,26 @@ const doc: fc.Arbitrary<Doc> = fc.record({
 });
 
 const corpus = fc.uniqueArray(doc, { minLength: 1, maxLength: 25, selector: (d) => d.url });
-const query = fc.array(word, { minLength: 1, maxLength: 3 }).map((w) => w.join(" "));
+// Mostly real words, with punctuation-only noise mixed in (R1: ignored).
+// The last real word is sometimes truncated, so prefix-vs-exact matters.
+const noise = fc.constantFrom("!", "&&", "-", "--", "*", "()");
+const query = fc
+  .tuple(
+    fc.array(fc.oneof({ arbitrary: word, weight: 4 }, { arbitrary: noise, weight: 1 }), {
+      minLength: 1,
+      maxLength: 4,
+    }),
+    fc.integer({ min: 2, max: 6 }),
+  )
+  .map(([terms, keep]) => {
+    for (let i = terms.length - 1; i >= 0; i--) {
+      if (WORDS.includes(terms[i]!)) {
+        terms[i] = terms[i]!.slice(0, keep);
+        break;
+      }
+    }
+    return terms.join(" ");
+  });
 
 /** A real FTS5 database loaded with exactly the SQL the indexer would push. */
 function loadDb(docs: Doc[]): { db: D1Like; close: () => void } {
@@ -68,9 +87,17 @@ function loadDb(docs: Doc[]): { db: D1Like; close: () => void } {
 const tokens = (d: Doc) =>
   [d.title, d.description, d.content, d.tags.join(" ")].join(" ").split(/\s+/).filter(Boolean);
 
-/** Every term must appear; the last term is a prefix match. */
+/**
+ * Every term must appear; the last term is a prefix match. Terms with no
+ * letters or digits are ignored before the maxTerms cap. No real terms at
+ * all matches nothing.
+ */
 function modelMatches(d: Doc, q: string): boolean {
-  const terms = q.split(/\s+/).filter(Boolean).slice(0, DEFAULT_RANKING.maxTerms);
+  const terms = q
+    .split(/\s+/)
+    .filter((t) => /[\p{L}\p{N}]/u.test(t))
+    .slice(0, DEFAULT_RANKING.maxTerms);
+  if (terms.length === 0) return false;
   const toks = tokens(d);
   return terms.every((t, i) =>
     i === terms.length - 1 ? toks.some((k) => k.startsWith(t)) : toks.includes(t),
@@ -118,14 +145,16 @@ describe("search oracle (real FTS5)", () => {
     );
   });
 
-  test("R3 results are ordered best-first and pages tile the full result list", async () => {
+  test("R3 best-first, ties broken by url, and pages tile the full list exactly", async () => {
     await fc.assert(
       fc.asyncProperty(corpus, query, fc.integer({ min: 1, max: 5 }), async (docs, q, size) => {
         const { db, close } = loadDb(docs);
         try {
           const all = await searchIndex(db, { query: q, limit: 1000 });
           for (let i = 1; i < all.length; i++) {
-            expect(all[i]!.score).toBeGreaterThanOrEqual(all[i - 1]!.score);
+            const [prev, cur] = [all[i - 1]!, all[i]!];
+            expect(cur.score).toBeGreaterThanOrEqual(prev.score);
+            if (cur.score === prev.score) expect(cur.url > prev.url).toBe(true);
           }
           const paged: string[] = [];
           for (let offset = 0; offset < all.length; offset += size) {
@@ -133,9 +162,8 @@ describe("search oracle (real FTS5)", () => {
             expect(page.length).toBeLessThanOrEqual(size);
             paged.push(...page.map((r) => r.url));
           }
-          // Same set, no dupes. Order may differ only within equal scores.
-          expect(new Set(paged).size).toBe(paged.length);
-          expect(paged.sort()).toEqual(all.map((r) => r.url).sort());
+          // Deterministic order, so pages concatenate to exactly the full list.
+          expect(paged).toEqual(all.map((r) => r.url));
         } finally {
           close();
         }
@@ -167,6 +195,28 @@ describe("search oracle (real FTS5)", () => {
     );
   });
 
+  test("R4 recency: a dated doc in the window beats an identical undated one", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        doc,
+        fc.integer({ min: 0, max: DEFAULT_RANKING.recency.windowDays - 30 }),
+        async (base, age) => {
+          const dated = { ...base, url: "/dated", date: isoDaysAgo(age) };
+          const undated = { ...base, url: "/undated", date: "" };
+          const q = base.title.split(" ")[0]!;
+          const { db, close } = loadDb([undated, dated]);
+          try {
+            const got = await searchIndex(db, { query: q });
+            expect(got.map((r) => r.url)).toEqual(["/dated", "/undated"]);
+          } finally {
+            close();
+          }
+        },
+      ),
+      run,
+    );
+  });
+
   test("R5 hostile input never errors, never escapes quoting, never matches everything", async () => {
     await fc.assert(
       fc.asyncProperty(corpus, fc.string({ unit: "binary", maxLength: 40 }), async (docs, q) => {
@@ -178,7 +228,7 @@ describe("search oracle (real FTS5)", () => {
           // Every term in the generated MATCH is a quoted literal.
           expect(toFtsQuery(q)).toMatch(/^("[^"]*"\*?)( "[^"]*"\*?)*$/);
           // A query of nothing-but-noise is not a wildcard over the corpus.
-          if (q.trim() === "" && docs.length > 0) expect(got).toEqual([]);
+          if (toFtsQuery(q) === '""') expect(got).toEqual([]);
         } finally {
           close();
         }

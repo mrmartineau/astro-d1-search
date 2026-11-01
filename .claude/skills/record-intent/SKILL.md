@@ -22,7 +22,9 @@ Goal: the next agent gets the decision and the reasoning, not just the code.
    structural rules). Extend the model, don't special-case the implementation.
    If it can't be checked yet, say so under the rule.
 4. **Run `bun test`.** A new property that passes first time on a rule you just
-   wrote: mutate the code briefly to confirm it can fail, then revert.
+   wrote: confirm it can fail. Copy the file you'll mutate to the scratchpad,
+   break it, run the test, then copy the backup back. Don't use
+   `git checkout` to revert; it discards other uncommitted work in the file.
 5. **Update `intent/README.md`** table if you added a file.
 6. Summarise in 3 lines: rules added/changed, checks added, open questions.
 

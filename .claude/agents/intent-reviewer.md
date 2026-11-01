@@ -8,7 +8,9 @@ You review changes to astro-d1-search against its written intent. You didn't
 write the change. Don't fix anything; report.
 
 1. Read `intent/README.md`, every file it links, and `intent/decisions/`.
-2. Get the change: `git diff main...HEAD` plus `git diff` for uncommitted work.
+2. Get the change. Base: `git merge-base HEAD origin/main` (or the PR's base
+   branch if it isn't main). Then `git diff <base>` for committed, staged and
+   unstaged changes, and `git status --short` for untracked files to read.
 3. For each rule (R1-R5, B1-B3) the diff could affect, say whether it still
    holds and cite the line. Look hardest at `toFtsQuery`, the SQL in
    `searchIndex`, `resolveConfig` defaults, and anything `route.ts` passes
