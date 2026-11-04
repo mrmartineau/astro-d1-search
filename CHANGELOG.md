@@ -1,3 +1,19 @@
+## [2.0.0](https://github.com/mrmartineau/astro-d1-search/compare/v1.0.1...v2.0.0) (2026-11-04)
+
+### ⚠ BREAKING CHANGES
+
+- Astro 5 is no longer supported. The peer dependency is now astro ^6.0.0 || ^7.0.0.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+### Features
+
+- require Astro 6+ and the Cloudflare adapter 13+ ([3c94226](https://github.com/mrmartineau/astro-d1-search/commit/3c94226fc18c3387fb072fa8f0f7e7e6e058dbad))
+
+### Bug Fixes
+
+- pin the conventionalcommits preset to v8, which the release notes writer supports ([b6d8376](https://github.com/mrmartineau/astro-d1-search/commit/b6d8376d03ecb47e36e498e84a41c3dab7593e9c))
+
 ## [1.0.1](https://github.com/mrmartineau/astro-d1-search/compare/v1.0.0...v1.0.1) (2026-11-04)
 
 ### Bug Fixes
