@@ -1,6 +1,7 @@
 // Injected by the integration's Vite plugin; carries the resolved options
 import config from "virtual:astro-d1-search-config";
 import type { APIRoute } from "astro";
+import { env } from "cloudflare:workers";
 import { type D1Like, searchIndex } from "./core";
 
 export const prerender = false;
@@ -36,25 +37,25 @@ export const GET: APIRoute = async ({ url, locals }) => {
     return json({ query: q, results: [] });
   }
 
-  // Cloudflare runtime provided by the adapter. Structurally typed (via
-  // unknown) so the package depends on neither the host project's generated
-  // Env types nor workers-types, whose Cache clashes with the DOM lib's.
-  const runtime = (
-    locals as unknown as {
-      runtime: {
-        env: Record<string, unknown>;
-        ctx?: { waitUntil(p: Promise<unknown>): void };
-        caches?: {
-          default?: {
-            match(key: string): Promise<Response | undefined>;
-            put(key: string, response: Response): Promise<unknown>;
-          };
+  // `env` comes from `cloudflare:workers`, `caches` is a global, and the
+  // execution context is `locals.cfContext` (Astro 6+ adapter; the old
+  // `locals.runtime` is gone). Structurally typed (via unknown) so the package
+  // depends on neither the host project's generated Env types nor
+  // workers-types, whose Cache clashes with the DOM lib's.
+  const ctx = (locals as unknown as { cfContext?: { waitUntil(p: Promise<unknown>): void } })
+    .cfContext;
+  const cache = (
+    globalThis as unknown as {
+      caches?: {
+        default?: {
+          match(key: string): Promise<Response | undefined>;
+          put(key: string, response: Response): Promise<unknown>;
         };
       };
     }
-  ).runtime;
+  ).caches?.default;
 
-  const db = runtime.env[config.binding];
+  const db = env[config.binding];
   if (!db) {
     return json(
       {
@@ -75,7 +76,6 @@ export const GET: APIRoute = async ({ url, locals }) => {
   if (typeParam) cacheKeyUrl.searchParams.set("type", typeParam);
   const cacheKey = cacheKeyUrl.toString();
 
-  const cache = runtime.caches?.default;
   const cached = await cache?.match(cacheKey);
   if (cached) return cached;
 
@@ -100,8 +100,8 @@ export const GET: APIRoute = async ({ url, locals }) => {
 
   if (cache) {
     const put = cache.put(cacheKey, response.clone());
-    if (runtime.ctx) {
-      runtime.ctx.waitUntil(put);
+    if (ctx) {
+      ctx.waitUntil(put);
     } else {
       await put;
     }

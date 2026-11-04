@@ -68,7 +68,7 @@ Two flows, and nothing crosses between them at runtime:
   script.
 - **Request time (Worker).** The integration injects `route.ts` at
   `config.apiRoute`. It validates `q`/`limit`/`offset`/`type`, pulls the D1
-  binding off `locals.runtime.env[config.binding]`, and calls
+  binding off `env[config.binding]` (from `cloudflare:workers`), and calls
   `searchIndex` from `core.ts`, which builds the bm25 + recency SQL.
 
 `resolveConfig` in `config.ts` is the single source of defaults for both — every

@@ -119,6 +119,7 @@ the filters as plain anchors. No client-side JavaScript is involved in search at
 ---
 export const prerender = false;
 
+import { env } from "cloudflare:workers";
 import { SEARCH_TYPES, type SearchResult, type SearchType, searchIndex } from "~/utils/search";
 
 const query = Astro.url.searchParams.get("q")?.trim() || "";
@@ -130,7 +131,7 @@ let searchError = "";
 
 if (query.length >= 2) {
   try {
-    results = await searchIndex(Astro.locals.runtime.env.SEARCH_DB, { query, limit: 25, type });
+    results = await searchIndex(env.SEARCH_DB, { query, limit: 25, type });
   } catch (error) {
     console.error("Search error:", error);
     searchError = `An error occurred while searching for "${query}". Please try again.`;

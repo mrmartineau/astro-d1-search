@@ -84,7 +84,7 @@ export default defineConfig({
 ```
 
 `platformProxy` is required for local dev — it exposes the local D1 binding to
-`astro dev` through `Astro.locals.runtime.env`.
+`astro dev` through `import { env } from 'cloudflare:workers'`.
 
 ### `scripts/build-search-index.ts`
 
@@ -123,6 +123,7 @@ database_id = "<from wrangler d1 create>"
 ---
 export const prerender = false
 
+import { env } from 'cloudflare:workers'
 import { resolveConfig, searchIndex } from 'astro-d1-search/core'
 import searchConfig from '../../search.config'
 
@@ -131,7 +132,7 @@ const query = Astro.url.searchParams.get('q')?.trim() || ''
 
 const results =
   query.length >= 2
-    ? await searchIndex(Astro.locals.runtime.env.SEARCH_DB, { query, limit: 25 }, config)
+    ? await searchIndex(env.SEARCH_DB, { query, limit: 25 }, config)
     : []
 ---
 

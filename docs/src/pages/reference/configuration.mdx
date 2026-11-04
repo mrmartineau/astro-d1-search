@@ -34,7 +34,7 @@ The D1 database name, as created with `wrangler d1 create <name>`. Used by the i
 `string` — default `'SEARCH_DB'`
 
 The binding name in your wrangler config. Must match the `binding` field of the `[[d1_databases]]`
-entry; that's the key the route looks up on `Astro.locals.runtime.env`.
+entry; that's the key the route looks up on `env` from `cloudflare:workers`.
 
 ### `site`
 

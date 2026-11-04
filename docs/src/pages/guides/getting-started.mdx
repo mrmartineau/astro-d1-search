@@ -14,7 +14,7 @@ description: Install the package, create a D1 database, and get a working search
 pnpm add astro-d1-search
 ```
 
-`astro` is a peer dependency (v5, v6 or v7). You also need the
+`astro` is a peer dependency (v6 or v7). You also need the
 [`@astrojs/cloudflare`](https://docs.astro.build/en/guides/integrations-guide/cloudflare/) adapter
 and [`wrangler`](https://developers.cloudflare.com/workers/wrangler/), if you don't have them
 already:
@@ -111,7 +111,7 @@ export default defineConfig({
 
 `platformProxy: { enabled: true }` is the part that makes local development work: it exposes your
 wrangler bindings — including the **local** D1 database — to `astro dev` via
-`Astro.locals.runtime.env`. Without it the endpoint returns a 500 telling you the binding is
+`cloudflare:workers`. Without it the endpoint returns a 500 telling you the binding is
 missing.
 
 The integration does three things:

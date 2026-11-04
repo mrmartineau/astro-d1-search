@@ -16,6 +16,6 @@ export default defineConfig({
   deps: {
     // Resolved by the integration's own Vite plugin inside the consuming Astro
     // project — it does not exist at build time here.
-    neverBundle: ["virtual:astro-d1-search-config"],
+    neverBundle: ["virtual:astro-d1-search-config", "cloudflare:workers"],
   },
 });

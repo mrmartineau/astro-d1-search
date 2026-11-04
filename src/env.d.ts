@@ -1,3 +1,7 @@
+declare module "cloudflare:workers" {
+  export const env: Record<string, unknown>;
+}
+
 declare module "virtual:astro-d1-search-config" {
   const config: {
     binding: string;

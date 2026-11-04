@@ -66,8 +66,10 @@ Runs the query and returns ranked results. `ranking` defaults to `DEFAULT_RANKIN
 config to use your own weights.
 
 ```ts
+import { env } from "cloudflare:workers";
+
 const results = await searchIndex(
-  Astro.locals.runtime.env.SEARCH_DB,
+  env.SEARCH_DB,
   { query: "css grid", limit: 25, type: "note" },
   config,
 );
