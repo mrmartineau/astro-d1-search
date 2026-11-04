@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/mrmartineau/astro-d1-search/compare/v1.0.0...v1.0.1) (2026-11-04)
+
+### Bug Fixes
+
+- update skill ([c70f88e](https://github.com/mrmartineau/astro-d1-search/commit/c70f88e740a0bc630aa1a49a8bec27e6afb27a22))
+
 # 1.0.0 (2026-07-31)
 
 ### Bug Fixes
