@@ -8,7 +8,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
 
 ### Features
 
-- require Astro 6+ and the Cloudflare adapter 13+ ([3c94226](https://github.com/mrmartineau/astro-d1-search/commit/3c94226fc18c3387fb072fa8f0f7e7e6e058dbad))
+- require Astro 6+ ([3c94226](https://github.com/mrmartineau/astro-d1-search/commit/3c94226fc18c3387fb072fa8f0f7e7e6e058dbad))
 
 ### Bug Fixes
 
