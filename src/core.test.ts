@@ -36,6 +36,17 @@ describe("toFtsQuery", () => {
     expect(toFtsQuery('a" OR "b')).toBe('"a" "OR" "b"*');
   });
 
+  test("treats control characters as separators so a NUL can't unterminate a term", () => {
+    expect(toFtsQuery("ab\u0000cd")).toBe('"ab" "cd"*');
+    expect(toFtsQuery("\u0000")).toBe('""');
+  });
+
+  test("drops punctuation-only terms so the prefix stays on the last real term", () => {
+    expect(toFtsQuery("gri !")).toBe('"gri"*');
+    expect(toFtsQuery("css && grid")).toBe('"css" "grid"*');
+    expect(toFtsQuery("! -- &&")).toBe('""');
+  });
+
   test("caps the number of terms", () => {
     expect(toFtsQuery("a b c d e f g h i j", 3)).toBe('"a" "b" "c"*');
   });
