@@ -24,7 +24,7 @@ export const site: SiteConfig = {
     },
   ],
   title: "astro-d1-search",
-  version: "1.0.1",
+  version: "2.0.0",
   versionHref: "/changelog",
   // Floating theme builder + header colour switcher are on by default.
   // Set to `false` to hide them:
