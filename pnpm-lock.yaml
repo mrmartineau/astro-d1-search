@@ -40,8 +40,8 @@ importers:
         specifier: ^7.0.6
         version: 7.1.1(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@25.9.5)(typescript@5.9.3)(unrun@0.2.39)
       conventional-changelog-conventionalcommits:
-        specifier: ^10.4.1
-        version: 10.4.1
+        specifier: ^8.0.0
+        version: 8.0.0
       semantic-release:
         specifier: ^25.0.3
         version: 25.0.8(typescript@5.9.3)
@@ -384,10 +384,6 @@ packages:
   '@colors/colors@1.5.0':
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
     engines: {node: '>=0.1.90'}
-
-  '@conventional-changelog/template@1.4.1':
-    resolution: {integrity: sha512-mHyyEL0eIEqJ6+aF24+AdZRo4bu4W5GdUiCiCx5X7kfDY51ye8GQJ264uOINObrRSKxtSRCOWPpl9hbOy4UzxQ==}
-    engines: {node: '>=22'}
 
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
@@ -2008,9 +2004,9 @@ packages:
     resolution: {integrity: sha512-6gfI3otXK5Ph5DfCOI1dblr+kN3FAm5a97hYoQkqNZxOaYa5WKfXH+AnpsmS+iUH2mgVC2Cg2Qw9m5OKcmNrIg==}
     engines: {node: '>=18'}
 
-  conventional-changelog-conventionalcommits@10.4.1:
-    resolution: {integrity: sha512-jS1LRFSbRoAr6JbhhRy1JYfNNUj5LM3+v49hRE03CgccsiYqgdVj/RTmrw4J1rylrqijHwdOlJWiJa61JHOgHg==}
-    engines: {node: '>=22'}
+  conventional-changelog-conventionalcommits@8.0.0:
+    resolution: {integrity: sha512-eOvlTO6OcySPyyyk8pKz2dP4jjElYunj9hn9/s0OB+gapTO8zwS9UQWrZ1pmF2hFs3vw1xhonOLGcGjy/zgsuA==}
+    engines: {node: '>=18'}
 
   conventional-changelog-writer@8.4.0:
     resolution: {integrity: sha512-HHBFkk1EECxxmCi4CTu091iuDpQv5/OavuCUAuZmrkWpmYfyD816nom1CvtfXJ/uYfAAjavgHvXHX291tSLK8g==}
@@ -4502,8 +4498,6 @@ snapshots:
   '@colors/colors@1.5.0':
     optional: true
 
-  '@conventional-changelog/template@1.4.1': {}
-
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
@@ -5868,9 +5862,9 @@ snapshots:
     dependencies:
       compare-func: 2.0.0
 
-  conventional-changelog-conventionalcommits@10.4.1:
+  conventional-changelog-conventionalcommits@8.0.0:
     dependencies:
-      '@conventional-changelog/template': 1.4.1
+      compare-func: 2.0.0
 
   conventional-changelog-writer@8.4.0:
     dependencies:
